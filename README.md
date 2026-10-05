@@ -28,10 +28,3 @@ python run_regression.py
 
 ใช้เวลาประมาณ 1–2 นาที จะพิมพ์ผลเป็นหัวข้อ 1–10 (วิเคราะห์ข้อมูล → เทรน → loss / R² → cross-validation → feature importance → บันทึก/โหลดโมเดล)
 `sklearn` ใช้เพื่อเทียบผลกับโมเดลที่เขียนเองเท่านั้น
-
-## สำหรับเพื่อนที่ทำ Classification
-
-1. เขียนโมเดลในโฟลเดอร์ `ClassificationAlgorithms/` (ไฟล์ละ 1 โมเดล ตามเลขนำหน้า)
-2. สร้าง `run_classification.py` ตามรูปแบบเดียวกับ `run_regression.py`
-3. ฟังก์ชันเตรียม feature ของ classification (ต้องใช้ `int.rate`, `fico_rate_gap`, แบ่งแบบ `stratify`) ให้เขียนเพิ่มใน `Common/data.py` เป็นฟังก์ชันใหม่ อย่าแก้ฟังก์ชัน regression
-4. ตัววัดผลของ classification (confusion matrix, specificity, F1, ROC-AUC) ให้สร้างไฟล์ใหม่ `Common/classification_metrics.py` จะได้ไม่ชนกับ `metrics.py`
