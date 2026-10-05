@@ -2,19 +2,9 @@
 Linear Regression (from scratch) - Regression task (target: int.rate)
 
 Simple regression = 1 feature (e.g. fico). Fitting methods: Normal Equation and Gradient Descent.
-Also holds the from-scratch metrics (R2, RMSE) shared by the other regression files.
+Metrics (loss, R2, RMSE) live in Common/metrics.py.
 """
 import numpy as np
-
-
-def r2_scratch(y_true, y_pred):
-    """R2 = 1 - SS_residual / SS_total"""
-    ss_res = np.sum((y_true - y_pred) ** 2)
-    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-    return 1 - (ss_res / ss_tot)
-
-def rmse_scratch(y_true, y_pred):
-    return np.sqrt(np.mean((y_true - y_pred) ** 2))
 
 
 class LinearRegressionScratch:
