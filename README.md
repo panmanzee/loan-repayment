@@ -6,10 +6,9 @@
 | `Common/data.py` | จัดการข้อมูล: โหลด, สร้าง feature, แบ่ง train/test, scale, k-fold |
 | `Common/metrics.py` | ตัววัดผล: loss (MSE), RMSE, MAE, R², feature importance |
 | `RegressionAlgorithms/` | โค้ดโมเดล regression 4 ตัว (ที่ยังไม่เทรนกับข้อมูลของเรา): Linear, Multiple, Polynomial, Gradient Boosting (Better Model) |
-| `ClassificationAlgorithms/` | โค้ดโมเดล classification 12 ไฟล์ ตามลิสต์ของครู (ตอนนี้ 01 กับ 03 เป็น sklearn, ที่เหลือยังเป็นโครงเปล่า) |
 | `run_regression.py` | **ไฟล์รัน** เอาข้อมูล + โมเดล + ตัววัดผลมารวมกัน แล้วพิมพ์ผลของทุกโมเดล (เรียกใช้ data.py และ metrics.py) |
 | `TrainedModels/` | โมเดลที่เทรนเสร็จแล้ว เก็บเป็นไฟล์ (`regression_model.joblib`) |
-| `Results/` | ตารางผลลัพธ์ (`regression_results.csv`) |
+| `Results/` | ผลลัพธ์ทุกตารางเป็นไฟล์ CSV (01 วิเคราะห์ข้อมูล, 02 loss/R²/RMSE/MAE ทุกโมเดล, 03 เทียบกับ sklearn, 04 cross-validation, 05 loss curve, 06 performance curve, 07 feature importance) เอาไปทำกราฟ/สไลด์ได้ |
 
 โฟลเดอร์ `...Algorithms` คือ "สูตร" ยังไม่เคยเรียนรู้จากข้อมูล ส่วน `TrainedModels` คือโมเดลที่เทรนแล้ว
 

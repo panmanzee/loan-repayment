@@ -1,0 +1,8 @@
+statistic,value
+rows,9578.0
+columns,14.0
+missing_values,0.0
+int.rate_mean,0.12264006055543954
+int.rate_std,0.02684698721338225
+int.rate_min,0.06
+int.rate_max,0.2164
