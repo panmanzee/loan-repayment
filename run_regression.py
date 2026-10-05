@@ -4,7 +4,7 @@ Run the whole REGRESSION task (target: int.rate):
   -> loss / R2 / RMSE / MAE -> 5-fold cross-validation -> feature importance -> save + load the final model.
 
 Run:  python run_regression.py        (from the project root)
-Outputs: printed tables, Results/*.csv (one file per table), TrainedModels/regression_model.joblib
+Outputs: printed tables; Results/<topic folders>/ (CSV tables + PNG charts); TrainedModels/regression_model.joblib
 """
 import itertools
 import os
@@ -29,6 +29,7 @@ from data import (StandardScalerScratch, build_regression_data, kfold_indices, l
                   train_test_split_scratch)
 from LinearRegression import LinearRegressionScratch
 from metrics import mae, mse, permutation_importance, r2, rmse
+import plots
 from MultipleRegression import MultipleRegressionScratch
 from PolynomialRegression import PolynomialRegressionScratch
 
@@ -36,8 +37,20 @@ warnings.filterwarnings("ignore")
 pd.set_option("display.width", 200)
 pd.set_option("display.float_format", lambda v: f"{v:.6f}")
 SEED = 42
-RESULTS = os.path.join(ROOT, "Results")   # every table below is also saved here as a CSV
-os.makedirs(RESULTS, exist_ok=True)
+RESULTS = os.path.join(ROOT, "Results")
+# One folder per topic of the "Quantitative results, benchmarking, analysis & discussion" requirement.
+# (03-06 = confusion matrix / accuracy / precision-recall-F1 / ROC-AUC belong to classification.)
+FOLDERS = {"data": "01_Data_Analysis", "loss": "02_Loss", "perf": "07_Performance_Curve",
+           "r2": "08_R_Square", "other": "09_Others"}
+
+
+def out(topic, filename):
+    """Path of a result file inside its topic folder (folder is created on first use)."""
+    folder = os.path.join(RESULTS, FOLDERS[topic])
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, filename)
+
+
 POLY_FEATURES = ["fico", "revol.util", "dti", "inq.last.6mths", "credit.policy"]
 
 
@@ -58,9 +71,16 @@ print(f"Features used  : {len(feature_cols)} (target int.rate; not.fully.paid ex
 corr = pd.Series({c: np.corrcoef(X[:, i], y)[0, 1] for i, c in enumerate(feature_cols)})
 pd.DataFrame({"statistic": ["rows", "columns", "missing_values", "int.rate_mean", "int.rate_std", "int.rate_min", "int.rate_max"],
               "value": [len(df), df.shape[1], int(df.isnull().sum().sum()), df["int.rate"].mean(), df["int.rate"].std(),
-                        df["int.rate"].min(), df["int.rate"].max()]}).to_csv(os.path.join(RESULTS, "01_data_analysis_summary.csv"), index=False)
+                        df["int.rate"].min(), df["int.rate"].max()]}).to_csv(out("data", "regression_summary_stats.csv"), index=False)
 corr.reindex(corr.abs().sort_values(ascending=False).index).rename("correlation_with_int.rate").to_csv(
-    os.path.join(RESULTS, "01_data_analysis_correlation.csv"), index_label="feature")
+    out("data", "regression_correlation_with_int_rate.csv"), index_label="feature")
+numeric = [c for i, c in enumerate(feature_cols) if len(np.unique(X[:, i])) > 2]   # skip 0/1 flags for scatter plots
+top4 = list(corr[numeric].abs().sort_values(ascending=False).index[:4])
+plots.plot_target_distribution(y, out("data", "regression_int_rate_distribution.png"))
+plots.plot_correlation_bars(corr, out("data", "regression_correlation_with_int_rate.png"))
+plots.plot_correlation_heatmap(X, feature_cols, y, corr, out("data", "regression_correlation_heatmap.png"))
+plots.plot_top_features_scatter(X, feature_cols, y, top4, out("data", "regression_top_features_vs_int_rate.png"))
+plots.plot_rate_by_purpose(df, out("data", "regression_int_rate_by_purpose.png"))
 print("\nTop correlations with int.rate:")
 print(corr.reindex(corr.abs().sort_values(ascending=False).index).head(8).to_string())
 
@@ -162,7 +182,8 @@ checks = {
 ver = pd.DataFrame({"Scratch R2": results.set_index("Model").loc[list(checks), "Test R2"],
                     "scikit-learn R2": pd.Series(checks)})
 ver["Difference"] = ver["Scratch R2"] - ver["scikit-learn R2"]
-ver.to_csv(os.path.join(RESULTS, "03_verification_scratch_vs_sklearn.csv"), index_label="Model")
+ver.to_csv(out("other", "regression_scratch_vs_sklearn.csv"), index_label="Model")
+plots.plot_scratch_vs_sklearn(ver, out("other", "regression_scratch_vs_sklearn.png"))
 print(ver.to_string())
 print("(small differences are expected: gradient descent vs closed form; boosting uses different random subsamples)")
 
@@ -178,7 +199,8 @@ for k, (tr, te) in enumerate(kfold_indices(len(y), 5, SEED), 1):
     print(f"  fold {k}/5 done")
 cv = pd.DataFrame({"CV R2 mean": {n: np.mean(v) for n, v in cv_scores.items()},
                    "CV R2 std": {n: np.std(v) for n, v in cv_scores.items()}})
-pd.DataFrame(cv_scores, index=[f"fold {k}" for k in range(1, 6)]).to_csv(os.path.join(RESULTS, "04_cross_validation_folds.csv"), index_label="fold")
+pd.DataFrame(cv_scores, index=[f"fold {k}" for k in range(1, 6)]).to_csv(out("r2", "regression_cv_folds.csv"), index_label="fold")
+plots.plot_cv_per_fold(cv_scores, out("r2", "regression_cv_r2_per_fold.png"))
 print(cv.to_string())
 
 # -----------------------------------------------------------------------------
@@ -191,7 +213,15 @@ table["R2 gain vs best taught model"] = table["Test R2"] - taught_best
 print(table.to_string())
 print(f"\nBest taught model test R2 = {taught_best:.4f}; better model = "
       f"{table.loc['4. Gradient Boosting (better)', 'Test R2']:.4f}")
-table.to_csv(os.path.join(RESULTS, "02_benchmark_loss_r2.csv"))
+table.to_csv(out("r2", "regression_benchmark_all_metrics.csv"))
+loss_table = results[results["Model"] != "Baseline (predict the mean)"][["Model", "Train loss (MSE)", "Test loss (MSE)"]]
+loss_table.to_csv(out("loss", "regression_loss_table.csv"), index=False)
+plots.plot_train_vs_test_loss(loss_table, out("loss", "regression_train_vs_test_loss.png"))
+plots.plot_r2_comparison(table, out("r2", "regression_r2_comparison.png"))
+test_preds = {name: fitted[name][1](X_test) for name in models}
+plots.plot_actual_vs_predicted(y_test, test_preds, {n: r2(y_test, p) for n, p in test_preds.items()},
+                               out("r2", "regression_actual_vs_predicted.png"))
+plots.plot_residuals(test_preds, y_test, out("other", "regression_residuals.png"))
 
 # -----------------------------------------------------------------------------
 # 8. Loss curves (numbers only; charts come later)
@@ -206,9 +236,15 @@ for name, hist in gd_models.items():
     print(f"  {name:<32} " + "  ".join(f"it {m + 1}: {hist[m]:.6f}" for m in marks))
 gbr_model = fitted["4. Gradient Boosting (better)"][0]
 pd.DataFrame([{"model": n, "iteration": i + 1, "train_loss_mse": v} for n, h in gd_models.items() for i, v in enumerate(h)]).to_csv(
-    os.path.join(RESULTS, "05_loss_curves.csv"), index=False)
+    out("loss", "regression_loss_curves.csv"), index=False)
+plots.plot_loss_curves(gd_models, out("loss", "regression_loss_curves.png"))
 staged = [r2(y_test, p) for p in gbr_model.staged_predict(X_test)]
-pd.DataFrame({"n_trees": range(len(staged)), "test_r2": staged}).to_csv(os.path.join(RESULTS, "06_performance_curve_boosting.csv"), index=False)
+train_mse_staged = [mse(y_train, p) for p in gbr_model.staged_predict(X_train)]
+test_mse_staged = [mse(y_test, p) for p in gbr_model.staged_predict(X_test)]
+pd.DataFrame({"n_trees": range(len(staged)), "train_mse": train_mse_staged, "test_mse": test_mse_staged,
+              "test_r2": staged}).to_csv(out("perf", "regression_boosting_performance_curve.csv"), index=False)
+plots.plot_boosting_performance(np.arange(len(staged)), train_mse_staged, test_mse_staged, staged,
+                                out("perf", "regression_boosting_performance_curve.png"))
 print(f"  Boosting test-R2 performance curve: peak {max(staged):.4f} at tree {int(np.argmax(staged))} of {GBR_N}")
 
 # -----------------------------------------------------------------------------
@@ -225,7 +261,8 @@ print(imp_lin.head(8).to_string())
 perm = pd.Series(permutation_importance(gbr_model.predict, X_test, y_test), index=feature_cols).sort_values(ascending=False)
 print("\nPermutation importance of Gradient Boosting (rise in test MSE when the feature is shuffled):")
 pd.DataFrame({"gradient_boosting_gain_share": imp_gbr, "multiple_linear_std_coef": imp_lin, "gradient_boosting_permutation": perm}).sort_values(
-    "gradient_boosting_gain_share", ascending=False).to_csv(os.path.join(RESULTS, "07_feature_importance.csv"), index_label="feature")
+    "gradient_boosting_gain_share", ascending=False).to_csv(out("other", "regression_feature_importance.csv"), index_label="feature")
+plots.plot_feature_importance(imp_gbr, perm, out("other", "regression_feature_importance.png"))
 print(perm.head(8).to_string())
 
 # -----------------------------------------------------------------------------
