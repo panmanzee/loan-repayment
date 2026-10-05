@@ -9,7 +9,7 @@
 | `RegressionAlgorithms/` | โค้ดโมเดล regression 4 ตัว (ที่ยังไม่เทรนกับข้อมูลของเรา): Linear, Multiple, Polynomial, Gradient Boosting (Better Model) |
 | `run_regression.py` | **ไฟล์รัน** เอาข้อมูล + โมเดล + ตัววัดผลมารวมกัน แล้วพิมพ์ผลของทุกโมเดล (เรียกใช้ data.py และ metrics.py) |
 | `TrainedModels/` | โมเดลที่เทรนเสร็จแล้ว เก็บเป็นไฟล์ (`regression_model.joblib`) |
-| `Results/` | ผลลัพธ์ทุกตารางเป็นไฟล์ CSV (01 วิเคราะห์ข้อมูล, 02 loss/R²/RMSE/MAE ทุกโมเดล, 03 เทียบกับ sklearn, 04 cross-validation, 05 loss curve, 06 performance curve, 07 feature importance) เอาไปทำกราฟ/สไลด์ได้ |
+| `Results/` | ผลลัพธ์ แยกโฟลเดอร์ตามหัวข้อ "Quantitative results" ของครู ในแต่ละโฟลเดอร์มีทั้งกราฟ (.png) และตาราง (.csv): `01_Data_Analysis`, `02_Loss`, `07_Performance_Curve`, `08_R_Square`, `09_Others` (เลข 03–06 = Confusion matrix, Accuracy, Precision/Recall/F1, ROC-AUC ของ classification ให้เพื่อนสร้างโฟลเดอร์ชื่อเลขเดียวกันเพิ่ม) |
 
 โฟลเดอร์ `...Algorithms` คือ "สูตร" ยังไม่เคยเรียนรู้จากข้อมูล ส่วน `TrainedModels` คือโมเดลที่เทรนแล้ว
 
