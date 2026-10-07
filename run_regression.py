@@ -29,6 +29,7 @@ from data import (StandardScalerScratch, build_regression_data, kfold_indices, l
                   train_test_split_scratch)
 from LinearRegression import LinearRegressionScratch
 from metrics import mae, mse, permutation_importance, r2, rmse
+import matplotlib.pyplot as plt
 import plots
 from MultipleRegression import MultipleRegressionScratch
 from PolynomialRegression import PolynomialRegressionScratch
@@ -202,6 +203,38 @@ cv = pd.DataFrame({"CV R2 mean": {n: np.mean(v) for n, v in cv_scores.items()},
 pd.DataFrame(cv_scores, index=[f"fold {k}" for k in range(1, 6)]).to_csv(out("r2", "regression_cv_folds.csv"), index_label="fold")
 plots.plot_cv_per_fold(cv_scores, out("r2", "regression_cv_r2_per_fold.png"))
 print(cv.to_string())
+
+# -----------------------------------------------------------------------------
+# 6b. Batch runs, second kind: N repeated random 80/20 splits (different seed each time)
+#     5-fold CV above covers every row exactly once; this repeats the *same* 80/20 protocol as section 2,
+#     so the single-split numbers in section 4 can be compared with a mean +/- SD.
+# -----------------------------------------------------------------------------
+N_BATCH = 10
+section(f"6b. BATCH RUNS: {N_BATCH} RANDOM 80/20 SPLITS  [artifact: training-testing iterations & batch runs]  (mean +/- SD)")
+batch = {n: {"R2": [], "RMSE": [], "MAE": []} for n in ["Baseline (predict the mean)"] + list(models)}
+for b in range(N_BATCH):
+    Xa, Xb, ya, yb = train_test_split_scratch(X, y, test_size=0.2, seed=1000 + b)
+    base_p = np.full_like(yb, ya.mean())
+    for k_, f_ in (("R2", r2), ("RMSE", rmse), ("MAE", mae)):
+        batch["Baseline (predict the mean)"][k_].append(f_(yb, base_p))
+    for name, fn in models.items():
+        _, _, p_b, _ = fn(Xa, ya, Xb)
+        for k_, f_ in (("R2", r2), ("RMSE", rmse), ("MAE", mae)):
+            batch[name][k_].append(f_(yb, p_b))
+    print(f"  split {b + 1}/{N_BATCH} done")
+batch_tbl = pd.DataFrame({n: {f"{k_} mean": np.mean(v[k_]) for k_ in v} | {f"{k_} SD": np.std(v[k_]) for k_ in v} for n, v in batch.items()}).T
+batch_tbl.to_csv(out("r2", "regression_batch_runs.csv"), index_label="Model")
+print(batch_tbl.to_string())
+gb, ml_ = np.array(batch["4. Gradient Boosting (better)"]["R2"]), np.array(batch["2. Multiple Linear"]["R2"])
+print(f"\nBetter model minus Multiple Linear: {np.mean(gb - ml_):+.4f} R2 on average (SD {np.std(gb - ml_):.4f}), better in {(gb > ml_).sum()} of {N_BATCH} splits")
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.2))
+names_b = list(batch)
+for ax, k_, t_ in ((axes[0], "R2", "R-squared (higher is better)"), (axes[1], "RMSE", "RMSE (lower is better)")):
+    bp = ax.boxplot([batch[n][k_] for n in names_b], tick_labels=[plots.SHORT.get(n, "Baseline") for n in names_b], patch_artist=True, showmeans=True)
+    for patch_, n in zip(bp["boxes"], names_b):
+        patch_.set_facecolor(plots.MODEL_COLORS.get(n, plots.NEUTRAL)); patch_.set_alpha(0.75)
+    ax.set_title(f"{t_} over {N_BATCH} random 80/20 splits"); ax.tick_params(axis="x", labelsize=8)
+plots._save(fig, out("r2", "regression_batch_runs.png"))
 
 # -----------------------------------------------------------------------------
 # 7. Benchmark table (what the report needs): every model, every metric
