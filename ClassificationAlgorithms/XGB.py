@@ -356,7 +356,7 @@ class XGBClassifierScratch:
             proba = sigmoid(F)
             g = w * (proba - y)
             h = w * proba * (1.0 - proba)
-            h = np.maximum(h, 1e-12)                      # keep H > 0 so the leaf value is defined
+            h = np.maximum(h, 1e-12)                      
 
             # 5. row + column subsampling for this tree
             rows = (rng.choice(n, size=n_rows_sub, replace=False) if self.subsample < 1.0
