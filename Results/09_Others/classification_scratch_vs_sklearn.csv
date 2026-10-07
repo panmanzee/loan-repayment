@@ -1,0 +1,8 @@
+check,difference,AUC scratch,AUC sklearn,difference means
+Naive Bayes (Gaussian) vs GaussianNB,1.4099832412739488e-14,0.6749193556593501,0.6749193556593501,max |dP|
+Naive Bayes (categorical) vs CategoricalNB,1.7708057242771247e-14,0.6756194604715532,0.6756194604715532,max |dP|
+"Averaged perceptron vs SGDClassifier(perceptron, average)",,0.6912741297025572,0.6923955185151265,AUC only
+Single-layer perceptron vs LogisticRegression (same loss),0.00885179478830096,0.7041446611920098,0.7050849182363057,max |dcoef|
+MLP vs sklearn MLPClassifier (same shape),,0.7089334595150146,0.6953506120829136,AUC only
+MLP back-propagation vs numerical gradient,3.8120160260380454e-08,,,max relative error
+EBM vs interpret.ExplainableBoostingClassifier,0.9499679943897765,0.7052721555698018,0.698576385708907,probability correlation
