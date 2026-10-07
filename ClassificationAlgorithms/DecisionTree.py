@@ -73,7 +73,7 @@ _COMMON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if _COMMON not in sys.path:
     sys.path.insert(0, _COMMON)
 
-from metrics_classification import (average_precision, best_threshold, logloss)  # noqa: E402
+from metrics_classification import (average_precision, best_threshold, logloss)
 
 
 def sqrt_scale_pos_weight(y):
