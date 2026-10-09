@@ -1,0 +1,5 @@
+model,train_logloss_final,per_iteration_history
+Decision Tree,0.44285007249756986,False
+Random Forest,0.3915808752455195,False
+Naive Bayes,0.6541556356369461,False
+Perceptron (averaged),0.4655912712974338,False

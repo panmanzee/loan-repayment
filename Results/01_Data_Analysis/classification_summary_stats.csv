@@ -1,0 +1,11 @@
+statistic,value
+rows,9578.0
+columns,14.0
+missing_values,0.0
+features_used,27.0
+positive_class_rate,0.16005429108373356
+negatives,8045.0
+positives,1533.0
+int_rate_mean,0.12264006055543954
+fico_mean,710.8463144706619
+dti_mean,12.606678847358529

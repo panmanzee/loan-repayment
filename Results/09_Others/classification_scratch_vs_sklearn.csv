@@ -1,8 +1,15 @@
-check,difference,AUC scratch,AUC sklearn,difference means
+check,difference,AUC scratch,AUC sklearn,the difference is
+Logistic Regression vs sklearn LogisticRegression,0.4693759222930297,0.7067313856580273,0.7043827782356952,max |dcoef|
+Decision Tree vs sklearn DecisionTreeClassifier (identical predictions),0.11899791231732781,0.632484659767378,0.635068331450784,1 - share identical
+Random Forest vs sklearn RandomForestClassifier,0.24001110539602194,0.6883699158449593,0.6886548422220187,max |dP|
+Gradient Boosting vs sklearn GradientBoostingClassifier,0.3781670408505231,0.6928259608633269,0.6666748074202969,max |dP|
+XGBoost vs real xgboost (same settings),0.3039749474717327,0.6844908467401369,0.6729757507301238,max |dP|
+"SVC (linear) vs sklearn LinearSVC (same hinge + balanced weights, liblinear solver)",0.6038622129436325,0.7006461723194025,0.6888359739902922,share of same flags
+"k-NN vs sklearn KNeighborsClassifier (k=41, distance weights)",0.3196437390887656,0.6500554588841062,0.6527887169154685,max |dP|
 Naive Bayes (Gaussian) vs GaussianNB,1.4099832412739488e-14,0.6749193556593501,0.6749193556593501,max |dP|
 Naive Bayes (categorical) vs CategoricalNB,1.7708057242771247e-14,0.6756194604715532,0.6756194604715532,max |dP|
 "Averaged perceptron vs SGDClassifier(perceptron, average)",,0.6912741297025572,0.6923955185151265,AUC only
-Single-layer perceptron vs LogisticRegression (same loss),0.00885179478830096,0.7041446611920098,0.7050849182363057,max |dcoef|
+Single-layer perceptron vs LogisticRegression (same loss),0.008851794730860762,0.7041446611920098,0.7050849182363057,max |dcoef|
 MLP vs sklearn MLPClassifier (same shape),,0.7089334595150146,0.6953506120829136,AUC only
 MLP back-propagation vs numerical gradient,3.8120160260380454e-08,,,max relative error
-EBM vs interpret.ExplainableBoostingClassifier,0.9499679943897765,0.7052721555698018,0.698576385708907,probability correlation
+Stacking vs sklearn StackingClassifier,,0.7024941233934732,0.7025022641471034,AUC only
