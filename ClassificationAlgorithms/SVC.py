@@ -25,7 +25,7 @@ street - the SUPPORT VECTORS:
 
 `C` is the whole trade-off: large C = "no mistakes allowed" (narrow street, overfits), small C = "allow
 some mistakes" (wide street, more bias). `cw_i` is the class weight; the default here is "balanced"
-(positives get n_neg/n_pos = 4.20 on this data set) and that default is load-bearing - see the note
+(positives get n_neg/n_pos = 5.21 on this data set) and that default is load-bearing - see the note
 about the hinge loss and imbalance further down.
 
 TWO SOLVERS, BOTH IMPLEMENTED HERE
