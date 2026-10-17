@@ -1,0 +1,3 @@
+n_features,test_roc_auc,excluded_features
+27,0.6884,
+24,0.6945,policy_fico_mismatch; purpose_educational; purpose_major_purchase

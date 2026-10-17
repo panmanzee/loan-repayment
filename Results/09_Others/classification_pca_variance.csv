@@ -1,0 +1,4 @@
+variance_target,n_components,total_features,pc1_share,pc2_share
+0.8,12,27,0.1923,0.1189
+0.9,15,27,0.1923,0.1189
+0.95,18,27,0.1923,0.1189
