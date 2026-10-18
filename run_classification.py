@@ -115,6 +115,14 @@ def section(title):
     print("\n" + "=" * 78 + f"\n  {title}\n" + "=" * 78)
 
 
+def model_slug(name):
+    """File-name-safe version of a model name: 'SVC (linear)' -> 'SVC_linear'."""
+    slug = "".join(c if (c.isalnum() or c in "-_") else "_" for c in str(name))
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")
+
+
 # -----------------------------------------------------------------------------
 # threshold helpers: the flagging rule is tuned to CATCH DEFAULTERS, on validation only
 # -----------------------------------------------------------------------------
@@ -1137,6 +1145,34 @@ print(ex.to_string(index=False))
 print(f"At the chosen threshold the model flags {(p_best >= thr).sum()} of {len(p_best)} test borrowers "
       f"({(p_best >= thr).mean():.1%}), catching {(y_te[p_best >= thr]).sum()} of {int(y_te.sum())} defaulters "
       f"({(y_te[p_best >= thr]).sum() / y_te.sum():.1%}), while {y_te.mean():.1%} really defaulted")
+
+# -----------------------------------------------------------------------------
+# 14b. Save EVERY classification model (one .joblib per model, plus a reload check)
+# -----------------------------------------------------------------------------
+section("14b. SAVE EVERY CLASSIFICATION MODEL TO TrainedModels/  [artifact: save-load model]")
+for name, m in fitted.items():
+    thr = float(bench.loc[name, "chosen_threshold"])
+    m.best_threshold_ = thr          # so .predict() after a reload uses the same F1.5 threshold
+    path = os.path.join(ROOT, "TrainedModels", f"classification_{model_slug(name)}.joblib")
+    meta = {"name": name, "feature_cols": feature_cols, "target": "not.fully.paid",
+            "threshold": thr, "threshold_rule": f"{FLAG_RULE} (chosen on validation)",
+            "test_roc_auc": float(bench.loc[name, "test_roc_auc"]),
+            "test_pr_auc": float(bench.loc[name, "test_pr_auc"]),
+            "test_logloss": float(bench.loc[name, "test_logloss"]),
+            "test_recall": float(bench.loc[name, "test_recall"])}
+    if hasattr(m, "get_state") and hasattr(type(m), "from_state"):
+        # models that keep factories/lambdas inside (Stacking) cannot be pickled as objects, so they are
+        # stored with the class's own state format (the same convention as classification_ebm_model)
+        joblib.dump({"model": type(m).__name__, "state": m.get_state(), **meta}, path)
+        back = type(m).from_state(joblib.load(path)["state"])
+    else:
+        joblib.dump({"model": m, **meta}, path)
+        back = joblib.load(path)["model"]
+    same = bool(np.allclose(back.predict_proba(X_te)[:, 1], p_te[name]))
+    print(f"  saved {os.path.relpath(path, ROOT):<58} reload identical: {same}  "
+          f"(test ROC-AUC {bench.loc[name, 'test_roc_auc']:.4f})")
+    assert same, f"reloaded {name} differs from the fitted model!"
+
 
 # -----------------------------------------------------------------------------
 # 15. Model-specific interpretability (perceptron variants, EBM curves, Naive Bayes densities, why-this-borrower)
