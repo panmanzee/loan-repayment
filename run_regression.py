@@ -59,6 +59,14 @@ def section(title):
     print("\n" + "=" * 70 + f"\n  {title}\n" + "=" * 70)
 
 
+def model_slug(name):
+    """File-name-safe version of a model name: '1. Simple Linear (FICO)' -> '1_Simple_Linear_FICO'."""
+    slug = "".join(c if (c.isalnum() or c in "-_") else "_" for c in str(name))
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")
+
+
 # -----------------------------------------------------------------------------
 # 1. Data analysis
 # -----------------------------------------------------------------------------
@@ -316,4 +324,33 @@ applicant = {"credit.policy": 1, "installment": 300.0, "log.annual.inc": np.log(
 x_new = np.array([[applicant.get(c, 0) for c in bundle["feature_cols"]]], dtype=float)
 rate = float(bundle["model"].predict(x_new)[0])
 print(f"Example applicant (FICO 720, DTI 12.5, income $65k): predicted int.rate = {rate:.4f} ({rate * 100:.2f}%)")
+
+# -----------------------------------------------------------------------------
+# 10b. Save EVERY regression model (one .joblib per model, plus a reload check)
+# -----------------------------------------------------------------------------
+section("10b. SAVE EVERY REGRESSION MODEL TO TrainedModels/  [artifact: save-load model]")
+for name, (model, predict_fn) in fitted.items():
+    # the input pipeline (the scaler) travels with the model, so a reloaded file is self-contained
+    if name.startswith("1."):                    # Simple Linear: fico only
+        pipe_scaler, pipe_cols, X_in = StandardScalerScratch().fit(X_train[:, [fico]]), ["fico"], X_test[:, [fico]]
+    elif name.startswith("2."):                  # Multiple Linear: every column
+        pipe_scaler, pipe_cols, X_in = scaler, list(feature_cols), X_test
+    elif name.startswith("3."):                  # Polynomial: its 5 POLY_FEATURES columns, standardised first
+        pipe_scaler, pipe_cols, X_in = (StandardScalerScratch().fit(X_train[:, poly_idx]),
+                                        list(POLY_FEATURES), X_test[:, poly_idx])
+    else:                                        # Gradient Boosting: no scaler needed
+        pipe_scaler, pipe_cols, X_in = None, None, X_test
+    p_te = predict_fn(X_test)
+    path = os.path.join(ROOT, "TrainedModels", f"regression_{model_slug(name)}.joblib")
+    joblib.dump({"model": model, "name": name, "feature_cols": feature_cols, "target": "int.rate",
+                 "scaler": pipe_scaler, "scaler_columns": pipe_cols,
+                 "test_r2": float(r2(y_test, p_te)), "test_rmse": float(rmse(y_test, p_te)),
+                 "test_mae": float(mae(y_test, p_te))}, path)
+    back = joblib.load(path)["model"]
+    x_back = pipe_scaler.transform(X_in) if pipe_scaler is not None else X_in
+    same = bool(np.allclose(back.predict(x_back), p_te))
+    print(f"  saved {os.path.relpath(path, ROOT):<52} reload identical: {same}  (test R2 {r2(y_test, p_te):.4f})")
+    assert same, f"reloaded {name} differs from the fitted model!"
+
+
 print("\nDONE.")
