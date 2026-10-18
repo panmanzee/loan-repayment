@@ -1,67 +1,4 @@
-"""
-Explainable Boosting Machine (EBM / "GA2M")  -  the BETTER, EXTRACURRICULAR classification model (built from scratch)
-Classification task (target: not.fully.paid, 1 = defaulted).   Self-contained NumPy file (does not import Common/).
 
-WHY THIS MODEL (and why it is not "just Gradient Boosting")
------------------------------------------------------------
-Gradient Boosting / XGBoost (taught in W5) grow DEEP trees on ALL features at once. They are accurate, but the result
-is a black box: nobody can say "this applicant was refused because their utilisation is 92%". A bank is legally
-required to give reasons (adverse-action notices). An EBM keeps most of the accuracy and is completely readable,
-because the model is ADDITIVE - a "credit scorecard" whose point tables are LEARNED by boosting:
-
-        log-odds(default | x)  =  b  +  f_1(x_1)  +  f_2(x_2)  +  ...  +  f_d(x_d)   ( + a few f_ij(x_i, x_j) pair terms )
-        P(default | x)         =  sigmoid( log-odds )
-
-Each f_j is a lookup table over the bins of ONE feature (a "shape function" you can draw as a curve). Logistic regression
-is the special case where every f_j is a straight line; the EBM lets each curve bend where the data says so
-(e.g. risk rises sharply above 80% utilisation but is flat below 40%).
-
-HOW THE TABLES ARE LEARNED  (cyclic gradient boosting, one feature at a time)
------------------------------------------------------------------------------
-Start with b = weighted log-odds of the positive class and every f_j = 0. Then repeat for R rounds:
-    for j = 1..d  (ROUND ROBIN - this is the key difference from Gradient Boosting, which picks the best feature):
-        p_i = sigmoid(current log-odds)
-        g_i = c_i (y_i - p_i)                    gradient (what the model still gets wrong)
-        h_i = c_i p_i (1 - p_i)                  curvature
-        bin-level sums:  G_k = sum_{i in bin k} g_i ,  H_k = sum_{i in bin k} h_i ,  N_k = rows in bin k
-        grow a SMALL tree on the bins of feature j only (<= max_leaves leaves, splits between neighbouring bins):
-            gain(split) = G_L^2/(H_L+lam) + G_R^2/(H_R+lam) - G^2/(H+lam)      (Newton / XGBoost-style gain, min_samples_leaf enforced)
-            leaf value  = G_leaf / (H_leaf + lam)
-        f_j[bins in leaf]  +=  learning_rate * leaf value                      (a tiny step: lr = 0.02-0.05)
-Because each tree sees only ONE feature, effects can never be mixed up between features, and the tiny learning rate with
-many cycles makes the final curves smooth and order-independent. This is the Newton step of logistic regression applied
-to one feature's bins - "boosted logistic regression with bins".
-
-THE OTHER INGREDIENTS (all implemented below)
----------------------------------------------
-* Quantile binning     : each feature is cut into <= max_bins equal-frequency bins (binary / few-valued features keep their values).
-* Outer bagging        : n_outer_bags bootstrap resamples are boosted independently and their tables AVERAGED (variance reduction,
-                         and the spread between bags gives an uncertainty band for every curve: `shape_function(..., with_std=True)`).
-* Early stopping       : each bag stops when the validation (weighted) log-loss has not improved for `early_stopping_rounds` cycles.
-* Pair interactions    : optional `n_interactions` > 0 (GA2M): after the main effects, every pair of features is scored with a
-                         fast 2-D histogram of the remaining gradient, the strongest pairs get a 2-D table (coarse bins) that is
-                         also boosted with Newton steps. Still readable as a heat-map.
-* Centering            : every f_j is shifted to weighted mean 0 and the shift is moved into b, so |f_j| directly measures importance.
-* Linear backbone      : `linear_base=True` (default) first fits a regularised logistic regression (Newton / IRLS) and boosts only
-                         the CORRECTION on top of it. The model is therefore never worse than logistic regression on the signal that
-                         is linear, and the bins only have to learn where the data bends (thresholds, saturation, U-shapes). Every
-                         feature's drawn curve = its linear part + its learned bin correction.
-* Class imbalance      : defaulters get weight sqrt((n - n_pos) / n_pos) (project convention) via `scale_pos_weight="auto"`.
-
-OUTPUTS THAT MAKE IT "EXPLAINABLE"
-----------------------------------
-    shape_function(j)   -> bin centres and log-odds contribution of feature j (the learned curve)
-    explain(x)          -> contribution of every feature for ONE borrower (sums to the log-odds)
-    feature_importances_-> weighted mean |f_j| (share of total)
-    export_text()       -> the scorecard in words
-
-Example
--------
-    ebm = ExplainableBoostingScratch(n_rounds=600, learning_rate=0.03, n_outer_bags=8, n_interactions=0)
-    ebm.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names, early_stopping_rounds=40)
-    proba = ebm.predict_proba(X_te)[:, 1]
-    print(ebm.export_text(top=6));  print(ebm.explain(X_te[0]))
-"""
 import time
 
 import numpy as np
@@ -99,7 +36,7 @@ def _wlogloss(y, p, w):
 
 
 def _fit_linear_backbone(Z, y, cw, l2=1e-3, iters=25):
-    """Weighted L2-regularised logistic regression by Newton-Raphson (IRLS). Z is standardised. Returns (beta, intercept)."""
+    
     n, d = Z.shape
     A = np.column_stack([Z, np.ones(n)]); th = np.zeros(d + 1)
     th[-1] = np.log(np.sum(cw * y) / np.sum(cw * (1 - y)))
@@ -114,10 +51,7 @@ def _fit_linear_backbone(Z, y, cw, l2=1e-3, iters=25):
 
 
 def _grow_bin_tree(G, H, N, max_leaves, min_leaf, lam, min_gain=1e-9):
-    """
-    Greedy tree on ONE feature's bin histogram. Returns [(start, end, leaf_value)] covering all bins [0, nb).
-    Splits are only allowed BETWEEN neighbouring bins, so the tree is a piecewise-constant step function.
-    """
+
     nb = len(G)
     segs = [(0, nb)]
     for _ in range(max_leaves - 1):
@@ -243,11 +177,10 @@ class ExplainableBoostingScratch:
         self.table_std_ = [np.std([bt[j] for bt in bags_tables], axis=0) for j in range(d)]
         self.intercept_ = b0
         self.bin_weight_ = [np.bincount(B[:, j], weights=cw, minlength=nbins[j]) for j in range(d)]
-        # centre every curve (weighted mean 0 over the training rows) and push the shift into the intercept
         for j in range(d):
             m = float(np.sum(self.tables_[j] * self.bin_weight_[j]) / self.bin_weight_[j].sum())
             self.tables_[j] = self.tables_[j] - m; self.intercept_ += m
-        # bag-averaged learning curves (carry the last value forward for bags that stopped earlier)
+    
         L = max(len(h["train_loss"]) for h in bags_hist)
         def avg(key):
             if not bags_hist[0][key]:
@@ -400,7 +333,6 @@ class ExplainableBoostingScratch:
         return (centres, curve, self.table_std_[j]) if with_std else (centres, curve)
 
     def explain(self, x, top=6):
-        """Contribution of each feature to ONE borrower's log-odds (sorted by size). Intercept + contributions = log-odds."""
         C, P = self.contributions(np.atleast_2d(x))
         rows = [(self.feature_names_[j], float(C[0, j])) for j in range(self.n_features_)]
         if P is not None:

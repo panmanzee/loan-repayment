@@ -1,74 +1,4 @@
-"""
-Dimensionality reduction (from scratch) - PCA / Kernel PCA / LDA, plus importance-based feature selection.
 
-Written with NumPy only and self-contained (no import from Common/), like the other part-2 files in this
-folder (NaiveBayes.py, Perceptron.py, MLP.py, SVC.py). It is meant to sit IN FRONT of a classifier:
-
-        X (27 features)  ->  Dimensionreduction  ->  X_reduced (k << 27)  ->  RandomForest / SVC
-
-WHY REDUCE DIMENSIONS FOR RANDOM FOREST / SVM?
-----------------------------------------------
-    Random Forest                                SVM
-    - splits one feature at a time, so it         - measures DISTANCE, so 27 correlated columns
-      mostly ignores redundant columns, but         let the same signal vote several times and
-      with 27 correlated columns every split        blur the margin; fewer, cleaner directions
-      is a coin flip between near-duplicates        make the street easier to find
-    - slower with many features                   - the n x n kernel matrix gets worse
-
-    PCA  = unsupervised: find the directions of largest VARIANCE and keep the top k.
-           No labels used. Good when the signal is spread over many correlated columns.
-    LDA  = supervised: find the directions that best SEPARATE the classes
-           (maximise between-class scatter / within-class scatter). Uses y, so it usually needs
-           fewer components than PCA for the same separation - but it can overfit with few samples.
-
-THE IDEA, PICTURE
------------------
-    PCA: rotate the axes so that the first axis points along the longest spread of the cloud
-                                        PC1
-          x  x                         ------>      keep PC1, drop PC2
-        x   x  x           ==>          x x x x      (the cloud is almost flat in the
-          x  x   x                        x x        perpendicular direction)
-             |  <- PC2 (short: mostly noise, dropped)
-
-    LDA: rotate so the two clouds are pushed apart and each cloud stays tight
-          o o                      o o   |   x x
-         o o o     ==>            o o    |    x x       the line is chosen to maximise
-          o o                      o o   |   x x       (apart) / (tight) instead of variance
-
-MATHS
------
-PCA   centre X (and optionally standardise), then take the eigenvectors of the covariance
-      C = X'^T X' / (n - 1). Component j explains lambda_j / sum(lambda) of the variance, and the
-      score of a row is just its projection on that eigenvector: z = X' V.
-LDA   with class means mu_c and overall mean mu:
-          S_b = sum_c n_c (mu_c - mu)(mu_c - mu)^T                    (between classes)
-          S_w = sum_c sum_{i in c} (x_i - mu_c)(x_i - mu_c)^T          (within classes)
-      solve the generalised eigenproblem S_b v = lambda S_w v and keep the top k directions. It is
-      solved here by whitening S_w (never inverting it directly), which is the numerically stable way.
-      At most n_classes - 1 components exist, so on this binary target LDA gives exactly ONE column.
-KernelPCA  the same as PCA but on the centred kernel matrix K (the kernel trick again): it can unfold
-      a curved cloud. It needs the n x n matrix, so it is limited to small/medium data.
-
-Example
--------
-    import sys; sys.path.insert(0, "Common")
-    from data_classification import build_classification_data, load_dataset, train_val_test_split_scratch
-    from metrics_classification import roc_auc
-    from RandomForest import RandomForestClassifierScratch
-    from Dimensionreduction import PCA
-
-    X, y, names = build_classification_data(load_dataset())
-    X_tr, X_va, X_te, y_tr, y_va, y_te = train_val_test_split_scratch(X, y)
-
-    pca = PCA(n_components=0.95, scale=True).fit(X_tr, feature_names=names)   # keep 95% of variance
-    print(pca.summary())
-
-    rf = RandomForestClassifierScratch(n_estimators=100, max_depth=8).fit(pca.transform(X_tr), y_tr)
-    print("ROC-AUC with PCA :", roc_auc(y_te, rf.predict_proba(pca.transform(X_te))[:, 1]))
-
-Everything exposes the usual transformer API: fit / transform / fit_transform (+ inverse_transform for
-PCA and Kernel PCA), get_state / from_state / save / load.
-"""
 
 import time
 
@@ -90,11 +20,6 @@ def _default_names(n, prefix="feat"):
 
 
 def _sign_fix(V):
-    """
-    Eigenvectors are only defined up to sign (and up to a rotation inside a block of tied eigenvalues).
-    Flip each column so that its largest-magnitude entry is positive: still a valid basis, but two runs
-    - and the comparison against scikit-learn - become reproducible.
-    """
     V = np.array(V, dtype=float)
     for j in range(V.shape[1]):
         k = int(np.argmax(np.abs(V[:, j])))
@@ -104,7 +29,6 @@ def _sign_fix(V):
 
 
 class _TransformerBase:
-    """Shared plumbing: fitted flag, output names, and the dict-state save/load used in this folder."""
 
     def _check_fitted(self):
         if not getattr(self, "fitted_", False):
@@ -146,27 +70,6 @@ class _TransformerBase:
 
 # =============================================================================================== PCA
 class PCA(_TransformerBase):
-    """
-    Principal Component Analysis.
-
-    Parameters
-    ----------
-    n_components   int (how many to keep), float in (0, 1) (keep that share of the variance, e.g. 0.95),
-                   or None (keep everything that is not numerically zero)
-    scale          standardise the features first (mean 0, sd 1). False = textbook PCA on the raw
-                   columns; True is usually what you want before an SVM, or when the columns have
-                   different units (on this data set the columns range from 0.06 to 900)
-    whiten         divide every component by its standard deviation, so all of them have variance 1.
-                   Rarely useful for trees; it can help an SVM by removing the scale differences
-    out_prefix_    prefix of the generated component names ("PC" -> PC1, PC2, ...)
-
-    Fitted attributes
-    -----------------
-    mean_, scale_, components_ (k x d, rows = eigenvectors), explained_variance_,
-    explained_variance_ratio_, cumulative_variance_ratio_, singular_values_, loadings_ (d x k,
-    correlation of every original feature with every component), reconstruction_error_,
-    n_components_, input_names_, output_names_
-    """
 
     def __init__(self, n_components=None, scale=False, whiten=False, out_prefix_="PC"):
         self.n_components = n_components
@@ -292,29 +195,6 @@ class PCA(_TransformerBase):
 
 # =============================================================================================== LDA
 class LDA(_TransformerBase):
-    """
-    Linear Discriminant Analysis used as a dimensionality reducer (supervised).
-
-    Keeps at most n_classes - 1 directions, because the between-class scatter S_b has rank
-    n_classes - 1: on this data set (2 classes) that is exactly ONE component. That is the point - it is
-    the single direction that separates defaulters from non-defaulters best.
-
-    Parameters
-    ----------
-    n_components   int, or None = min(n_classes - 1, n_features)
-    shrinkage      ridge added to S_w: 0 = plain LDA, >0 = more stable when the columns are correlated
-                   or a class has few rows (0.05 is a safe default on this data)
-    scale          standardise the features first. LDA whitens the within-class scatter, so an unscaled
-                   column with a huge range (revol.bal ~ 1e4 here) hijacks the only direction it can
-                   return - on this data set scaling is worth ~0.15 ROC-AUC. True is recommended.
-    out_prefix_    prefix of the generated names ("LD" -> LD1, ...)
-
-    Fitted attributes
-    -----------------
-    scalings_ (d x k), means_, class_means_, priors_, classes_, discriminant_values_,
-    explained_variance_ratio_, n_components_
-    """
-
     def __init__(self, n_components=None, shrinkage=0.0, scale=False, out_prefix_="LD"):
         self.n_components = n_components
         self.shrinkage = float(shrinkage)
@@ -405,27 +285,6 @@ class LDA(_TransformerBase):
 
 # ========================================================================================= KernelPCA
 class KernelPCA(_TransformerBase):
-    """
-    Kernel PCA: PCA in the feature space implied by a kernel, without ever building that space.
-
-    The same trick the SVM uses: instead of the covariance of X, eigendecompose the CENTRED kernel
-    matrix K (n x n), so a curved cloud can be unfolded into directions a linear PCA cannot see.
-    The price is the n x n matrix, so this is for small/medium data only (guard: max_samples).
-
-    Parameters
-    ----------
-    n_components   int, or a float in (0,1) = share of the kernel variance
-    kernel         "rbf" (default), "poly" or "linear"
-    gamma          rbf width: "scale" = 1/(d * var(X)), "auto" = 1/d, or a number
-    degree, coef0  poly kernel parameters
-    max_samples    refuse to build the kernel matrix above this n
-
-    Fitted attributes
-    -----------------
-    kernel_eigenvalues_, kernel_eigenvectors_, explained_variance_ratio_, cumulative_variance_ratio_,
-    X_fit_, n_components_
-    """
-
     def __init__(self, n_components=2, kernel="rbf", gamma="scale", degree=3, coef0=1.0,
                  max_samples=6000, out_prefix_="KPC"):
         if kernel not in ("rbf", "poly", "linear"):
@@ -499,12 +358,12 @@ class KernelPCA(_TransformerBase):
         return self
 
     def fit_transform(self, X, y=None, feature_names=None):
-        """Scores of the training rows: eigenvector_j * sqrt(eigenvalue_j), as in the derivation."""
+    
         self.fit(X, y, feature_names=feature_names)
         return self.kernel_eigenvectors_ * np.sqrt(np.maximum(self.kernel_eigenvalues_, 1e-12))
 
     def transform(self, X):
-        """Scores of new rows: project their kernel similarity to the training rows on the same basis."""
+    
         self._check_fitted()
         X = _as_float(X)
         K_new = self._kernel(X, self.X_fit_)                             # (m, n_train)
@@ -522,30 +381,6 @@ class KernelPCA(_TransformerBase):
 # ======================================================================== feature selection helper
 def feature_selection_by_importance(make_model, feature_names, X_train, y_train, X_val=None, y_val=None,
                                     metric=None, min_keep=5, tol=0.01, verbose=False):
-    """
-    The OTHER kind of dimensionality reduction: throw whole columns away instead of mixing them into
-    new ones. Random Forest is the natural tool, because `feature_importances_` comes for free.
-
-    How it works: sort the features by importance of a first fitted model, then try to remove the least
-    important one, refit on the remaining columns and keep the removal only if the validation score does
-    not get worse. It stops at the first removal that hurts, so the result is never meaningfully worse
-    than the full model - and it is often the same or slightly better, with fewer columns to fit.
-
-    Parameters
-    ----------
-    make_model   callable() -> a fresh, unfitted classifier (the same factory idea as run_classification)
-    metric       callable(y_true, proba) -> float, e.g. Common.metrics_classification.average_precision.
-                 Without X_val/y_val/metric the function just drops features in importance order.
-    tol          how much score you are willing to give up per removal (default 0.01). Requiring a
-                 strictly non-worse score sounds safer but then nothing can ever be removed, because
-                 every refit already moves the score by a little noise: on this data set the RF
-                 validation score moves by ~0.01 between refits, so 0.01 is the honest tolerance.
-
-    Returns
-    -------
-    dict: "keep" (names), "keep_idx" (positions), "dropped", "scores" (list of (n_features, score)),
-          "model" (refitted on the kept columns; the input model when no metric was given)
-    """
     base = make_model().fit(np.asarray(X_train, dtype=float), np.asarray(y_train).astype(int))
     imp = getattr(base, "feature_importances_", None)
     if imp is None:
@@ -573,9 +408,9 @@ def feature_selection_by_importance(make_model, feature_names, X_train, y_train,
     if verbose:
         print(f"  {len(cols)} features: score {score:.4f}")
     while len(cols) > max(int(min_keep), 1):
-        trial = cols[:-1]                            # remove the least important of the current set
+        trial = cols[:-1]                            
         s, m = evaluate(trial)
-        if use_score and s < score - tol:            # it hurts more than tol -> keep the set, stop
+        if use_score and s < score - tol:            
             if verbose:
                 print(f"  dropping {names[cols[-1]]} would cost {score - s:.4f} (> tol {tol}) "
                       f"-> stop at {len(cols)} features")
@@ -583,11 +418,11 @@ def feature_selection_by_importance(make_model, feature_names, X_train, y_train,
         dropped.append(names[cols[-1]])
         cols, score, model = trial, s, m
         scores.append((len(cols), score))
-        if s > best[0]:                              # remember the best-scoring set we have seen
+        if s > best[0]:                             
             best = (s, list(cols), m)
         if verbose:
             print(f"  dropped {dropped[-1]:<26} -> {len(cols)} features, score {score:.4f}")
-    # the best set seen (not necessarily the smallest one: dropping can also improve the score)
+    # the best 
     keep_idx, best_model = best[1], best[2]
     return {"keep": [names[j] for j in keep_idx], "keep_idx": keep_idx, "dropped": dropped,
             "scores": scores, "model": best_model, "best_score": best[0]}
@@ -595,13 +430,6 @@ def feature_selection_by_importance(make_model, feature_names, X_train, y_train,
 
 def compare_reductions(X_train, y_train, X_test, y_test, make_model, roc_auc, n_components=(2, 5, 10),
                        verbose=True):
-    """
-    Helper for the report: fit the same classifier on the raw features and on PCA/LDA-reduced versions
-    and print the test ROC-AUC side by side. Everything is fitted on the TRAINING rows only.
-
-    make_model : callable() -> a fresh classifier, e.g. lambda: RandomForestClassifierScratch(...)
-    roc_auc    : the metric function, e.g. Common.metrics_classification.roc_auc
-    """
     out = {}
     m = make_model().fit(X_train, y_train)
     out["raw"] = float(roc_auc(y_test, m.predict_proba(X_test)[:, 1]))
@@ -621,7 +449,7 @@ def compare_reductions(X_train, y_train, X_test, y_test, make_model, roc_auc, n_
         out["lda"] = float(roc_auc(y_test, m.predict_proba(ld.transform(X_test))[:, 1]))
         if verbose:
             print(f"  {'LDA':<20} {ld.n_components_:>3} features | test ROC-AUC {out['lda']:.4f}")
-    except Exception as e:                                # noqa: BLE001 - report it, never crash the run
+    except Exception as e:                               
         if verbose:
             print(f"  LDA skipped: {e}")
     return out

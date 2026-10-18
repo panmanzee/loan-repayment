@@ -1,33 +1,4 @@
-"""
-Blend of an Explainable Boosting Machine and a bagged MLP  (the "better model", from scratch, NumPy only)
 
-Why this model
---------------
-On this data every sensible model lands at ROC-AUC ~0.67-0.69, so one model is rarely clearly better than another.
-What *does* work a little is combining models that make different mistakes:
-
-  * the EBM  (ExplainableBoosting.py)  is additive: a smooth, nearly linear score built one feature at a time.
-    Low variance, but it cannot see interactions between features.
-  * the MLP  (MLP.py)                  is neural: it can combine features, but one network is noisy
-    (its result changes with the random initialisation and with the mini-batch order).
-
-Two classic variance-reduction ideas are used on top of each other:
-
-  1. BAGGING of the MLP: train `n_mlps` networks that differ only in their random seed (initial weights, dropout
-     masks, batch order) and average their probabilities. The average has lower variance than any single network.
-     Each network early-stops on the validation set.
-  2. BLENDING (fixed-weight averaging) of the two *families*: p = w * p_EBM + (1 - w) * p_MLPbag, w = 0.5.
-     No second-level model is trained, so unlike stacking nothing can over-fit the blend weights.
-
-Both members are trained with the same sqrt class weight, so their probabilities live on the same scale and a plain
-average keeps the probabilities usable (the log-loss stays meaningful).  The threshold is chosen on validation.
-
-Interpretability is kept: `explain(x)` returns the EBM part exactly (each feature's contribution in log-odds) and the
-MLP part as the difference it adds, so a decision can still be justified with reason codes.
-
-Measured (8 random splits, test ROC-AUC): see docs and run_classification.py.  Honest summary: +0.003 AUC over
-logistic regression and +0.006 over Random Forest, in 7 of 8 splits.  Small, but consistent, and the best PR-AUC.
-"""
 import time
 
 import numpy as np

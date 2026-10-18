@@ -1,70 +1,4 @@
-r"""
-Unsupervised clustering (from scratch) - k-Means and agglomerative (hierarchical) clustering.
 
-NumPy only, self-contained (no import from Common/), same folder style as the other part-2 files
-(NaiveBayes.py, Perceptron.py, MLP.py, SVC.py, KNN.py, Dimensionreduction.py).
-
-IMPORTANT: THIS ONE IS UNSUPERVISED
------------------------------------
-Every other model in this folder is given y. Clustering is NOT: it only sees X and has to invent the
-groups itself. So the question "is it any good" changes shape:
-    * how well the grouping fits the data        -> inertia / silhouette (no labels needed)
-    * does the grouping line up with not.fully.paid?  -> only a POST-HOC check (ARI, purity, the
-      per-cluster default rate). y is never used to fit or to pick k, otherwise the numbers are fake.
-
-WHY CLUSTER A LOAN DATA SET AT ALL
-----------------------------------
-It gives the report a different kind of sentence than "model X scored 0.70": e.g. "the applicants fall
-into N natural segments, and segment 3 defaults at 44% while segment 1 defaults at 4%" - that is a
-business statement, and it is also a sanity check on the features (if no segment separates the
-defaults, the features carry little structure).
-
-THE TWO ALGORITHMS
-------------------
-k-Means (partitional, needs k up front)
-    repeat:  assign every row to its closest centre  ->  move every centre to the mean of its rows
-    until the centres stop moving. It minimises the within-cluster sum of squares (inertia).
-
-                  .  .                   |                    .  .
-                .   .  .      ==>       |        .   .  .     |   .  .
-                 . | .                 |                .  .   |
-                   v                   |                 v     |
-             (random start)      (after a few iterations: Voronoi cells)
-
-    Weakness: the answer depends on the start (hence "n_init" restarts, and the k-means++ seeding
-    below), and it always finds round, equally-sized-ish cells.
-
-Agglomerative / hierarchical (no k needed up front, you cut the tree afterwards)
-    start with every row as its own cluster and repeatedly merge the two CLOSEST clusters.
-    linkage decides what "closest" means:
-        single   = distance between the closest members      (chains, can follow weird shapes)
-        complete = distance between the furthest members     (compact, equal-sized groups)
-        average  = mean pairwise distance                    (the middle ground)
-        ward     = merge that increases the within-cluster variance the least (the usual default)
-
-                o o | o o | o o          merge the two nearest
-                 \_/   \_/   \_/    ==>   then merge again ...      cut the tree at the height
-                  \_____/                     |                       that leaves k groups
-        cut here ────┼────────
-
-    Cost: it needs a distance matrix (n x n) and, implemented naively, O(n^3); the nearest-neighbour
-    chain used here makes it O(n^2), but n is still capped (n <= max_samples) because of the matrix.
-
-Example
--------
-    import sys; sys.path.insert(0, "Common")
-    from data_classification import build_classification_data, load_dataset, train_val_test_split_scratch
-    from KMeanandAgglomerative import KMeansScratch, AgglomerativeScratch, cluster_default_profile, adjusted_rand_index
-
-    X, y, names = build_classification_data(load_dataset())
-    X_tr, X_va, X_te, y_tr, y_va, y_te = train_val_test_split_scratch(X, y)
-
-    km = KMeansScratch(n_clusters=4).fit(X_tr, feature_names=names)      # y is NOT passed
-    print(km.summary())
-    print(km.cluster_profile(X_tr, top=4))
-    print(cluster_default_profile(km.labels_, y_tr))                     # post-hoc check vs the label
-    print("ARI vs not.fully.paid:", adjusted_rand_index(y_tr, km.labels_))
-"""
 
 import time
 
@@ -86,7 +20,6 @@ def _default_names(n, prefix="feat"):
 
 
 def _pairwise_euclidean(A, B, block=512):
-    """Distance matrix between A and B, computed in blocks so memory stays bounded."""
     out = np.empty((len(A), len(B)), dtype=float)
     bb = np.sum(B * B, axis=1).reshape(1, -1)
     for start in range(0, len(A), block):
@@ -113,7 +46,6 @@ def _pairwise(A, B, metric="euclidean", block=512):
 
 
 class _ClusterBase:
-    """Shared plumbing: standardisation, output names, state (mirrors the classifiers in this folder)."""
 
     def _fit_scaler(self, X):
         self.mean_ = X.mean(axis=0)
@@ -123,8 +55,6 @@ class _ClusterBase:
 
     def _z(self, X):
         Z = (np.asarray(X, dtype=float) - self.mean_) / self.scale_
-        # the clip is defined on Z-SCORES, so it only makes sense together with scale=True. Applied to
-        # raw columns it would be nonsense (e.g. revol.bal runs to ~1e5, clipping it at 5 would erase it).
         if self.scale and self.clip is not None:
             Z = np.clip(Z, -float(self.clip), float(self.clip))
         return Z

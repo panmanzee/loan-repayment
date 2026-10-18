@@ -1,80 +1,18 @@
-"""
-Gradient Boosting (from scratch) - Classification task (target: not.fully.paid)
 
-Everything is written from scratch with NumPy: the regression tree (weak learner) AND the boosting loop.
-Data comes from Common/data_classification.py, every number is measured with Common/metrics_classification.py.
-
-GRADIENT BOOSTING (Friedman, 1999-2001) IN ONE PICTURE
-------------------------------------------------------
-One decision tree alone is a rough guess. Boosting makes a strong model by adding many SMALL trees,
-where every new tree is fitted to what the current ensemble still gets WRONG:
-
-    F_0(x) = log-odds of the positive rate                 start: one number for everybody
-    for m = 1 .. M:
-        p_i = sigmoid(F_{m-1}(x_i))                        current probability
-        r_i = (y_i - p_i) / (p_i * (1 - p_i))              PSEUDO-RESIDUAL = how wrong we still are
-        pick a random `subsample` fraction of the rows      stochastic gradient boosting
-        h_m  = small regression tree fitted to (x_i, r_i)   weak learner: splits by VARIANCE REDUCTION
-        v_j  = value of leaf j, found by a line search      one Newton step on that leaf's rows
-        F_m(x) = F_{m-1}(x) + learning_rate * v_j           take a small step, never a leap
-
-Why "gradient" boosting: for a loss L, the negative gradient -dL/dF is exactly the direction that
-lowers the loss fastest. For logistic loss that direction is proportional to (y - p), so fitting the
-tree to residuals IS gradient descent in function space - the tree just chooses a good step size per leaf.
-
-HOW THIS DIFFERS FROM XGBoost (ClassificationAlgorithms/XGB.py)
---------------------------------------------------------------
-Both build "a sum of small trees", but the two algorithms do three things differently, and this file
-keeps the CLASSIC GB choices on purpose - that is the point of having both models:
-
-                              Gradient Boosting (this file)          XGBoost (XGB.py)
-    what the tree learns      pseudo-residual r (1st order only)      gradients g AND hessians h (2nd order)
-    split criterion           variance reduction of r                similarity gain with lambda
-    leaf value                line search: -sum(w g)/sum(w h)         closed form: -G/(H+lambda)
-    regularisation            none built in (depth + lr + sub-    lambda, gamma (min split gain),
-                              sample are the only brakes)             min_child_weight on H
-    class weighting           sample weights w (also inside the       scale_pos_weight on g and h
-                              split search)
-
-The weight convention is the project one (same as ML-project/final.ipynb):
-    raw = (n - n_pos) / n_pos,   scale_pos_weight = sqrt(raw)   -> see sqrt_scale_pos_weight().
-
-Metrics and the decision threshold
-----------------------------------
-logloss / aucpr come from Common/metrics_classification.py. `eval_metric` only decides WHEN to stop and
-what is recorded in `evals_result_`; the model always learns the logistic loss. The prediction threshold
-is chosen on the VALIDATION set (pick_threshold -> metrics_classification.best_threshold) and then reused
-on the test set - never chosen on the test set.
-
-Example
--------
-    import sys; sys.path.insert(0, "Common")
-    from data_classification import build_classification_data, load_dataset, train_val_test_split_scratch
-    from metrics_classification import evaluate_on_test
-
-    X, y, names = build_classification_data(load_dataset())
-    X_tr, X_va, X_te, y_tr, y_va, y_te = train_val_test_split_scratch(X, y)
-
-    gb = GradientBoostingClassifierScratch(n_estimators=300, learning_rate=0.05, max_depth=3)
-    gb.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names, early_stopping_rounds=30)
-    report = evaluate_on_test(y_va, gb.predict_proba(X_va)[:, 1], y_te, gb.predict_proba(X_te)[:, 1])
-"""
 import os
 import sys
 import time
 
 import numpy as np
 
-# -----------------------------------------------------------------------------
-# Shared helpers: metrics come from Common/metrics_classification.py, nothing is duplicated from there.
-# -----------------------------------------------------------------------------
+
 _COMMON = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Common")
 if _COMMON not in sys.path:
     sys.path.insert(0, _COMMON)
 
 from metrics_classification import (accuracy, average_precision, best_threshold,logloss)
 
-# sigmoid belongs to the OBJECTIVE (binary:logistic), not to evaluation -> it stays with the model.
+
 def sigmoid(F):
     """Stable 1 / (1 + exp(-F))."""
     F = np.clip(F, -35.0, 35.0)
@@ -83,14 +21,9 @@ def sigmoid(F):
 
 def sqrt_scale_pos_weight(y):
     """
-    The class-imbalance weight used throughout this project (same two lines as ML-project/final.ipynb):
-
+    The class-imbalance weight :
         raw_weight       = (n_rows - n_positive) / n_positive
         scale_pos_weight = sqrt(raw_weight)
-
-    In this file the weight is used as a SAMPLE WEIGHT w_i: positives get scale_pos_weight, negatives 1.
-    It then appears in three places -- the split search (weighted variance), the leaf line search
-    (weighted Newton step) and the base score -- which is the classic-GB way of handling imbalance.
     """
     y = np.asarray(y, dtype=int).ravel()
     n_pos = int(y.sum())
@@ -103,20 +36,7 @@ def sqrt_scale_pos_weight(y):
 # Weak learner: one CART regression tree fitted to the pseudo-residuals
 # -----------------------------------------------------------------------------
 class GBTreeScratch:
-    """
-    A small regression tree whose splits minimise the weighted squared error of the pseudo-residuals.
 
-    Only the tree STRUCTURE is decided here (which feature, which cut). The leaf VALUES are filled in
-    afterwards by the booster with a one-step Newton line search, because that value depends on the loss.
-
-    Weighted error of a node = sum(w_i * (r_i - r_bar)^2) = sum(w r^2) - (sum(w r))^2 / sum(w)
-    so the reduction of that error for a split is
-        gain = (A_L^2 / W_L) + (A_R^2 / W_R) - (A^2 / W),     A = sum(w r),  W = sum(w)
-    (the sum(w r^2) parts cancel). The tree keeps the cut with the largest gain.
-
-    Implemented with a single pre-binning of the features (quantile buckets) so the split search is a
-    bincount + cumsum per feature instead of a full sort of every node.
-    """
 
     def __init__(self, max_depth=3, min_samples_leaf=5, max_bins=256):
         self.max_depth = int(max_depth)
@@ -134,7 +54,7 @@ class GBTreeScratch:
         return len(self.value) - 1
 
     def build(self, Xb, r, w, rows, feature_idx):
-        """Grow the tree on `rows` (row subsampling) using only `feature_idx` (column subsampling)."""
+        
         self.n_features_ = Xb.shape[1]
         self.feature, self.threshold_bin, self.left, self.right = [], [], [], []
         self.value, self.n_rows = [], []
@@ -183,7 +103,7 @@ class GBTreeScratch:
         return self
 
     def _best_split(self, Xb_sub, A, W, rows, total_a, total_w, feature_idx):
-        """Weighted variance-reduction search on the subset of columns offered to this tree."""
+       
         best, best_gain = None, 0.0
         n_rows = len(rows)
         parent_term = total_a * total_a / total_w
@@ -215,7 +135,7 @@ class GBTreeScratch:
         return best
 
     def apply(self, Xb):
-        """Leaf index of every row (vectorised traversal)."""
+        
         node = np.zeros(Xb.shape[0], dtype=int)
         while True:
             feat = self.feature[node]
@@ -232,31 +152,7 @@ class GBTreeScratch:
 # The ensemble
 # -----------------------------------------------------------------------------
 class GradientBoostingClassifierScratch:
-    """
-    Binary Gradient Boosting classifier written from scratch (logistic loss, first-order boosting).
 
-    Parameters
-    ----------
-    n_estimators      number of boosting rounds (trees)
-    learning_rate     shrinkage of every leaf value (the "slow learning" knob)
-    max_depth         depth of each weak learner
-    min_samples_leaf  minimum ROWS in a leaf (classic GB brake; note XGBoost uses min_child_weight).
-                      Default 5 -- scikit-learn's GB default is 1, pass 1 for a like-for-like run
-    subsample         fraction of ROWS per tree (Friedman's stochastic gradient boosting; < 1 fights overfitting)
-    max_features      fraction of FEATURES offered to each tree (like sklearn's max_features)
-    leaf_solver       "newton" (default) = one Newton step per leaf, -sum(w g)/sum(w h)
-                      "mean"             = plain average of the pseudo-residuals (a pure gradient step)
-    scale_pos_weight  weight of the positive rows: "auto" (default) = sqrt((n - n_pos) / n_pos) from y_train,
-                      or any number, or 1.0 to switch the weighting off completely
-    max_bins          quantile buckets used for the split search
-    base_score        starting log-odds (default = log-odds of the weighted positive rate)
-    random_state      seed for row/feature subsampling
-
-    Fitted attributes
-    -----------------
-    trees, train_loss, evals_result_, best_iteration_, n_estimators_, early_stopping_used_,
-    scale_pos_weight_, feature_importances_, feature_names_, bin_edges_, fit_time_
-    """
 
     def __init__(self, n_estimators=300, learning_rate=0.1, max_depth=3, min_samples_leaf=5,
                  subsample=1.0, max_features=1.0, leaf_solver="newton", scale_pos_weight="auto",
@@ -292,11 +188,7 @@ class GradientBoostingClassifierScratch:
     # -- fit ------------------------------------------------------------------
     def fit(self, X, y, eval_set=None, feature_names=None, early_stopping_rounds=None,
             eval_metric="logloss", verbose=False):
-        """
-        Train the ensemble.  `eval_set` is a list like [(X_val, y_val)]; the first entry is used for the
-        loss curve and for early stopping (the booster keeps `best_iteration_`, like sklearn/xgboost).
-        `eval_metric` is "logloss" or "aucpr" and only affects WHEN training stops (see the module docstring).
-        """
+
         t0 = time.time()
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=int)
@@ -342,9 +234,9 @@ class GradientBoostingClassifierScratch:
         for m in range(self.n_estimators):
             # 4. pseudo-residuals of the logistic loss:  r = (y - p) / (p (1 - p))
             proba = sigmoid(F)
-            h = np.maximum(proba * (1.0 - proba), 1e-12)      # curvature, also the Newton denominator
-            g = proba - y                                     # dL/dF
-            r_pseudo = -g / h                                 # = (y - p) / (p (1 - p))
+            h = np.maximum(proba * (1.0 - proba), 1e-12)      
+            g = proba - y                                     
+            r_pseudo = -g / h                                
 
             rows = (rng.choice(n, size=n_rows_sub, replace=False) if self.subsample < 1.0
                     else np.arange(n))
@@ -360,16 +252,16 @@ class GradientBoostingClassifierScratch:
             leaf = tree.apply(Xb)
             order = np.argsort(leaf, kind="stable")
             leaf_sorted, row_order = leaf[order], order
-            bounds = np.searchsorted(leaf_sorted, np.arange(tree.n_nodes_ + 1))   # n_nodes_ + 1 edges
+            bounds = np.searchsorted(leaf_sorted, np.arange(tree.n_nodes_ + 1))   
             for node_id in range(tree.n_nodes_):
                 start, end = bounds[node_id], bounds[node_id + 1]
-                if end <= start:                       # no training row landed here -> leaf stays 0
+                if end <= start:                    
                     continue
                 idx = row_order[start:end]
                 wg = float(np.sum(w[idx] * g[idx]))
                 wh = float(np.sum(w[idx] * h[idx]))
                 if self.leaf_solver == "newton" and wh > 1e-12:
-                    tree.value[node_id] = -wg / wh                 # one Newton step (sklearn's "preset")
+                    tree.value[node_id] = -wg / wh                 
                 else:
                     ww = float(np.sum(w[idx]))
                     tree.value[node_id] = float(np.sum(w[idx] * r_pseudo[idx]) / ww) if ww > 1e-12 else 0.0
@@ -408,10 +300,7 @@ class GradientBoostingClassifierScratch:
 
     # -- prediction -----------------------------------------------------------
     def decision_function(self, X, iteration_limit=None):
-        """
-        Raw score F for each row.  After early stopping the default prediction walks only the trees up to
-        `best_iteration_` (same behaviour as xgboost); pass iteration_limit=self.n_estimators_ to use all.
-        """
+
         if iteration_limit is None and getattr(self, "early_stopping_used_", False):
             iteration_limit = self.best_iteration_
         Xb = self._bin(np.asarray(X, dtype=float))
@@ -422,16 +311,14 @@ class GradientBoostingClassifierScratch:
         return F
 
     def predict_proba(self, X, iteration_limit=None):
-        """[P(y=0), P(y=1)] -- same layout as scikit-learn."""
         p1 = sigmoid(self.decision_function(X, iteration_limit))
         return np.column_stack([1.0 - p1, p1])
 
     def predict(self, X, threshold=0.5):
-        """0/1 prediction.  Pass model.best_threshold_ (chosen on validation) for a sensible cut."""
         return (self.predict_proba(X)[:, 1] >= threshold).astype(int)
 
     def staged_decision_function(self, X):
-        """Yield the score after 1, 2, 3, ... trees (used for the performance curve)."""
+
         Xb = self._bin(np.asarray(X, dtype=float))
         F = np.full(Xb.shape[0], self.base_score_)
         for tree in self.trees:
@@ -444,7 +331,6 @@ class GradientBoostingClassifierScratch:
 
     # -- helpers used by the report -------------------------------------------
     def feature_importance_table(self, top=None, kind="gain"):
-        """List of (feature name, importance) sorted from most to least important (gain = variance reduction)."""
         values = self.feature_importances_
         order = np.argsort(-values)
         if top is not None:
@@ -452,10 +338,6 @@ class GradientBoostingClassifierScratch:
         return [(self.feature_names_[j], float(values[j])) for j in order]
 
     def pick_threshold(self, X_val, y_val, metric="f1"):
-        """
-        Choose the decision threshold on the VALIDATION set (never on the test set) using the shared scan
-        in Common/metrics_classification.py; the value is stored in `best_threshold_`.
-        """
         proba = self.predict_proba(X_val)[:, 1]
         best_thr, best_score = best_threshold(y_val, proba, metric=metric)
         self.best_threshold_ = best_thr

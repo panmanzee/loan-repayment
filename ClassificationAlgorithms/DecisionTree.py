@@ -1,68 +1,4 @@
-"""
-Decision Tree (CART) from scratch - Classification task (target: not.fully.paid)
 
-Everything is written from scratch with NumPy. Data comes from Common/data_classification.py and every
-number is measured with Common/metrics_classification.py.
-
-WHAT A DECISION TREE DOES
--------------------------
-The tree keeps asking yes/no questions about ONE feature at a time and splits the rows into two groups:
-
-        fico <= 693.5 ?
-          |        |
-         yes       no
-          |         |
-    revol.util <= 52.5 ?   installment <= 250.4 ?
-       |      |              |        |
-     ...    ...            ...      ...
-       |        |            |        |
-     leaf    leaf          leaf     leaf      each leaf stores P(y=1) of the rows that landed there
-
-Which question is asked?  The one that makes the two groups as PURE as possible, measured by impurity:
-
-    Gini(w0, w1)    = 1 - (w0/W)^2 - (w1/W)^2                     W = w0 + w1   (weighted counts)
-    Entropy(w0, w1) = -(p0 log p0 + p1 log p1)                    p = w / W
-    gain = impurity(parent) - (W_L/W)·impurity(left) - (W_R/W)·impurity(right)
-
-The tree grows greedily (the best question now, not the globally best tree), stops when a node is pure
-or a size/improvement limit is hit, and a leaf predicts the share of positives that reached it.
-
-TWO SPLIT SEARCH MODES (both implemented here)
-----------------------------------------------
-    max_bins=None  -> EXACT CART: every feature is sorted at every node and every cut between two
-                      different values is evaluated. This is textbook CART and matches scikit-learn.
-    max_bins=256   -> BINNED (default): features are pre-binned into 256 quantile buckets once, so the
-                      search is a bincount + cumsum. Much faster, and the cut positions are quantiles
-                      instead of every single value.
-
-HOW THIS DIFFERS FROM THE OTHER MODELS IN THIS FOLDER
------------------------------------------------------
-                          DecisionTree.py        RandomForest.py        GradientBoosting / XGB
-    number of trees       1 (baseline)           many, independent      many, sequential
-    extra randomness      none (all features)    bootstrap + sqrt(p)    row/feature subsampling
-    learns                the labels             the labels             residuals / gradients
-    bias / variance       low bias, HIGH variance low variance          low variance
-    interpretable rules   YES (export_text)      no (too many trees)    no
-This is why the tree alone usually scores worse -- and why the forest fixes it. Compare them in the report.
-
-Class imbalance: like the other models here, `scale_pos_weight="auto"` (default) weights the positive
-rows by sqrt((n - n_pos) / n_pos) -- the ML-project/final.ipynb convention -- and this weight enters the
-impurity computation, so the questions themselves are chosen to separate the rare positive class.
-
-Example
--------
-    import sys; sys.path.insert(0, "Common")
-    from data_classification import build_classification_data, load_dataset, train_val_test_split_scratch
-    from metrics_classification import evaluate_on_test
-
-    X, y, names = build_classification_data(load_dataset())
-    X_tr, X_va, X_te, y_tr, y_va, y_te = train_val_test_split_scratch(X, y)
-
-    tree = DecisionTreeClassifierScratch(max_depth=4, min_samples_leaf=20, criterion="gini")
-    tree.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names)
-    print(tree.export_text(max_depth=3))                      # <- the rules, readable
-    report = evaluate_on_test(y_va, tree.predict_proba(X_va)[:, 1], y_te, tree.predict_proba(X_te)[:, 1])
-"""
 import os
 import sys
 import time
@@ -77,14 +13,6 @@ from metrics_classification import (average_precision, best_threshold, logloss)
 
 
 def sqrt_scale_pos_weight(y):
-    """
-    The class-imbalance weight used throughout this project (same two lines as ML-project/final.ipynb):
-
-        raw_weight       = (n_rows - n_positive) / n_positive
-        scale_pos_weight = sqrt(raw_weight)
-
-    Applied as a SAMPLE WEIGHT on the positive rows, so it flows into the impurity formula above.
-    """
     y = np.asarray(y, dtype=int).ravel()
     n_pos = int(y.sum())
     if n_pos == 0 or n_pos == len(y):
@@ -93,7 +21,6 @@ def sqrt_scale_pos_weight(y):
 
 
 def _impurity(w0, w1, criterion="gini"):
-    """Impurity of a node from its weighted class masses. 0 = pure, higher = more mixed."""
     w = w0 + w1
     with np.errstate(divide="ignore", invalid="ignore"):
         p0 = np.where(w > 0, w0 / w, 0.0)
@@ -107,28 +34,6 @@ def _impurity(w0, w1, criterion="gini"):
 # The tree
 # -----------------------------------------------------------------------------
 class DecisionTreeScratch:
-    """
-    Binary CART classification tree.
-
-    Parameters
-    ----------
-    criterion              "gini" (default) or "entropy"
-    max_depth              maximum depth (None = grow until pure / blocked by the size limits)
-    min_samples_split      a node needs at least this many ROWS to be considered for a split
-    min_samples_leaf       every child must keep at least this many ROWS
-    max_features           features considered at each split: None (default, all), "sqrt", "log2",
-                           an int, or a float fraction. nit: a single tree normally uses ALL features --
-                           restricting them is what RandomForest.py does per node.
-    min_impurity_decrease  a split must reduce the impurity at least by this (0 = only gain > 0)
-    max_bins               None = exact CART split search on the raw values, else quantile buckets
-
-    Fitted attributes
-    -----------------
-    feature, threshold, left, right   the structure (-1 in `feature` means leaf)
-    leaf_proba                        P(y=1) of each node (a leaf's prediction)
-    n_rows, impurity, gain            diagnostics per node
-    depth_, n_leaves_, n_nodes_, feature_importances_
-    """
 
     def __init__(self, criterion="gini", max_depth=None, min_samples_split=2, min_samples_leaf=1,
                  max_features=None, min_impurity_decrease=0.0, max_bins=256, random_state=None):
@@ -232,10 +137,6 @@ class DecisionTreeScratch:
 
     # -- fit the tree ---------------------------------------------------------
     def fit(self, X, y, sample_weight=None, feature_names=None, verbose=False):
-        """
-        Grow the tree (this is the tree's own fit; DecisionTreeClassifierScratch wraps it for the project
-        interface). `sample_weight` lets the caller pass the class weights in.
-        """
         t0 = time.time()
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=int).ravel()
@@ -340,10 +241,6 @@ class DecisionTreeScratch:
         return X
 
     def apply(self, X, depth_limit=None):
-        """
-        Node index every row ends up in (the leaf, or the node where a depth limit stopped the walk).
-        Handy for inspecting the tree: np.bincount(model.tree_.apply(X_train)).
-        """
         Xv = self._transform(X)
         node = np.zeros(Xv.shape[0], dtype=int)
         depth = np.zeros(Xv.shape[0], dtype=int)
@@ -361,18 +258,10 @@ class DecisionTreeScratch:
         return node
 
     def predict_proba(self, X, depth_limit=None):
-        """
-        [P(y=0), P(y=1)] for every row -- the positive share of the leaf it reaches.
-        `depth_limit=k` answers with a shallower tree (used for the depth/overfitting curve).
-        """
         p1 = self.leaf_proba[self.apply(X, depth_limit=depth_limit)]
         return np.column_stack([1.0 - p1, p1])
 
     def export_text(self, max_depth=None, indent="    "):
-        """
-        Render the tree as readable if/else rules. Because a single tree IS interpretable, this is the
-        part of a decision-tree report that a forest cannot give you.
-        """
         lines = []
 
         def walk(node, depth, prefix):
@@ -399,28 +288,6 @@ class DecisionTreeScratch:
 # Project-facing wrapper (same interface as RandomForest.py / GradientBoosting.py / XGB.py)
 # -----------------------------------------------------------------------------
 class DecisionTreeClassifierScratch:
-    """
-    Decision tree classifier with the project interface.
-
-    Parameters
-    ----------
-    criterion              "gini" (default) or "entropy"
-    max_depth              None = grow until pure (a single tree then overfits; that is the lesson)
-    min_samples_split      minimum ROWS to consider splitting a node (default 2)
-    min_samples_leaf       minimum ROWS in a child (raise this to regularise the tree)
-    max_features           None (default, all features), "sqrt", "log2", int or float fraction
-    min_impurity_decrease  minimum impurity reduction required for a split
-    max_bins               None = exact CART split search, else quantile buckets (default 256)
-    class_weight           None (default) or "balanced" (scikit-learn style weights)
-    scale_pos_weight       project convention: "auto" (default) = sqrt((n - n_pos) / n_pos) from y_train,
-                           or a number, or 1.0 to switch the extra positive weighting off
-    random_state           seed (only used when max_features restricts the feature set)
-
-    Fitted attributes
-    -----------------
-    tree_ (the DecisionTreeScratch), feature_names_, feature_importances_, scale_pos_weight_,
-    depth_, n_leaves_, best_depth_, evals_result_, fit_time_
-    """
 
     def __init__(self, criterion="gini", max_depth=None, min_samples_split=2, min_samples_leaf=1,
                  max_features=None, min_impurity_decrease=0.0, max_bins=256, class_weight=None,
@@ -454,14 +321,6 @@ class DecisionTreeClassifierScratch:
 
     def fit(self, X, y, eval_set=None, feature_names=None, early_stopping_rounds=None,
             eval_metric="logloss", verbose=False):
-        """
-        Grow the tree.
-
-        When `eval_set` is given, the validation metric is measured at EVERY DEPTH and stored in
-        `evals_result_` together with `best_depth_`. That curve is the classic overfitting picture: a
-        single tree keeps improving on the training rows while the validation score turns around and gets
-        worse. If `early_stopping_rounds` is also passed, predictions default to `best_depth_`.
-        """
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=int).ravel()
         self.feature_names_ = list(feature_names) if feature_names is not None else [f"f{j}" for j in range(X.shape[1])]
@@ -508,7 +367,6 @@ class DecisionTreeClassifierScratch:
 
     # -- prediction -----------------------------------------------------------
     def _depth_limit(self):
-        """After early stopping, answer with the depth that was best on validation (like the other models)."""
         return self.best_depth_ if getattr(self, "early_stopping_used_", False) else None
 
     def predict_proba(self, X, depth_limit=None):
@@ -516,14 +374,10 @@ class DecisionTreeClassifierScratch:
         return self.tree_.predict_proba(X, depth_limit=limit)
 
     def predict(self, X, threshold=0.5):
-        """0/1 prediction.  Pass model.best_threshold_ (chosen on validation) for a sensible cut."""
+    
         return (self.predict_proba(X)[:, 1] >= threshold).astype(int)
 
     def staged_predict_proba(self, X):
-        """
-        Yield [P(0), P(1)] for depth 1, 2, 3, ... -- the tree answered by a shallower and shallower cut
-        of itself. Plotting this against the validation loss is the standard overfitting figure.
-        """
         for d in range(1, self.depth_ + 1):
             yield self.tree_.predict_proba(X, depth_limit=d)
 
@@ -533,15 +387,13 @@ class DecisionTreeClassifierScratch:
 
     # -- helpers used by the report -------------------------------------------
     def apply(self, X, depth_limit=None):
-        """Node index of every row (see DecisionTreeScratch.apply)."""
+        
         return self.tree_.apply(X, depth_limit=depth_limit)
 
     def export_text(self, max_depth=None):
-        """Readable if/else rules of the fitted tree (the interpretability artefact)."""
         return self.tree_.export_text(max_depth=max_depth)
 
     def feature_importance_table(self, top=None, kind="gain"):
-        """List of (feature name, importance) sorted from most to least important (weighted impurity decrease)."""
         values = self.feature_importances_
         order = np.argsort(-values)
         if top is not None:
@@ -549,10 +401,6 @@ class DecisionTreeClassifierScratch:
         return [(self.feature_names_[j], float(values[j])) for j in order]
 
     def pick_threshold(self, X_val, y_val, metric="f1"):
-        """
-        Choose the decision threshold on the VALIDATION set (never on the test set) with the shared scan
-        in Common/metrics_classification.py; stored in `best_threshold_`.
-        """
         proba = self.predict_proba(X_val)[:, 1]
         best_thr, best_score = best_threshold(y_val, proba, metric=metric)
         self.best_threshold_ = best_thr

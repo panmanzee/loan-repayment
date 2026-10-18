@@ -1,48 +1,4 @@
-"""
-Multi-Layer Perceptron (from scratch) - Classification task (target: not.fully.paid, 1 = defaulted)
 
-Everything is written from scratch with NumPy (forward pass, back-propagation, Adam). The file is self-contained
-(it does not import Common/).
-
-THE MODEL
----------
-A stack of fully-connected layers. With hidden sizes (32, 16) and 23 inputs:
-
-        a0 = x                                        (standardised features, 23)
-        z1 = a0 W1 + b1      a1 = relu(z1)            (32 hidden neurons)
-        z2 = a1 W2 + b2      a2 = relu(z2)            (16 hidden neurons)
-        z3 = a2 W3 + b3      p  = sigmoid(z3)         (1 output neuron = P(default))
-
-Each hidden neuron is the SLP of Perceptron.py followed by a non-linearity; stacking them lets the network bend the
-decision boundary (interactions such as "high utilisation AND many inquiries"), which a single neuron cannot do.
-
-LOSS (what is minimised)
-------------------------
-Weighted binary cross-entropy + L2 penalty:
-
-        L = -(1/W) sum_i c_i [ y_i log p_i + (1-y_i) log(1-p_i) ]  +  (lambda/2) sum_layers ||W||^2        c_i = sample weight, W = sum c_i
-
-BACK-PROPAGATION (chain rule, layer by layer, from the output back to the input)
---------------------------------------------------------------------------------
-        output layer :   delta_L = c_i (p_i - y_i) / W                         <- sigmoid + cross-entropy collapse to this
-        hidden layer :   delta_l = (delta_{l+1} W_{l+1}^T)  *  f'(z_l)          f'(z) = 1[z>0] for ReLU, 1 - tanh^2 for tanh
-        gradients    :   dW_l = a_{l-1}^T delta_l + lambda W_l ,   db_l = sum_i delta_l
-`gradient_check()` compares these analytic gradients with finite differences (the standard correctness test).
-
-OPTIMISER: Adam (per-weight adaptive step: m = b1 m + (1-b1) g ; v = b2 v + (1-b2) g^2 ; W -= lr * m_hat / (sqrt(v_hat) + eps));
-"sgd" and "momentum" are available too. Weights start with He initialisation (std = sqrt(2 / fan_in)) for ReLU.
-Optional inverted dropout on the hidden layers, mini-batches, early stopping on the validation loss with automatic
-restoring of the best epoch.
-
-Class imbalance: `scale_pos_weight="auto"` weights defaulters sqrt((n-n_pos)/n_pos) times more (the project convention).
-
-Example
--------
-    mlp = MLPClassifierScratch(hidden_layers=(32, 16), learning_rate=1e-3, l2=1e-3, n_epochs=200)
-    mlp.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names, early_stopping_rounds=20)
-    proba = mlp.predict_proba(X_te)[:, 1]
-    mlp.history_["val_loss"]            # loss curve
-"""
 import time
 
 import numpy as np
@@ -97,7 +53,6 @@ class MLPClassifierScratch:
         self.optimizer = optimizer; self.beta1 = beta1; self.beta2 = beta2; self.momentum = momentum
         self.scale_pos_weight = scale_pos_weight; self.random_state = random_state
 
-    # ---------------------------------------------------------- init / helpers
     def _fit_scaler(self, X):
         self.mean_ = X.mean(axis=0); sd = X.std(axis=0); sd[sd == 0] = 1.0; self.scale_ = sd
 
@@ -124,7 +79,7 @@ class MLPClassifierScratch:
         return _sigmoid(z).ravel(), acts, zs, masks
 
     def _backward(self, y, w_norm, p, acts, zs, masks):
-        """Returns gradients [dW...], [db...] for the (already normalised) weighted cross-entropy + L2."""
+        
         fprime = _ACT[self.activation][1]
         delta = (w_norm * (p - y))[:, None]                      # sigmoid + cross-entropy
         gW, gb = [None] * len(self.W_), [None] * len(self.W_)
@@ -203,7 +158,6 @@ class MLPClassifierScratch:
             self.best_epoch_ = len(hist["epoch"])
         self.history_ = hist; self.n_epochs_run_ = len(hist["epoch"]); self.fit_time_ = time.time() - t0
         self.n_parameters_ = int(sum(W.size + b.size for W, b in zip(self.W_, self.b_)))
-        # "importance": mean |dp/dx_j| (average sensitivity of the output to each standardised input), by finite difference
         self.feature_importances_ = self._sensitivity(Z)
         self.best_threshold_ = 0.5
         return self
@@ -216,7 +170,6 @@ class MLPClassifierScratch:
         return imp / max(imp.sum(), 1e-12)
 
 
-    # --- plug-in names used by run_classification.py (unweighted log-loss curves) ---
     @property
     def train_loss(self):
         return self.history_.get("train_logloss") if getattr(self, "history_", None) else None
@@ -255,10 +208,6 @@ class MLPClassifierScratch:
 
     # --------------------------------------------------------- correctness test
     def gradient_check(self, X, y, n_checks=8, eps=1e-5, seed=0):
-        """
-        Compare analytic back-prop gradients with central finite differences on a few random weights.
-        Returns the largest relative error (should be ~1e-7 or smaller). Dropout is switched off for the check.
-        """
         X = np.asarray(X, dtype=np.float64)[:200]; y = np.asarray(y).astype(float)[:200]
         if not hasattr(self, "W_"):
             self._fit_scaler(X); self._init_params(X.shape[1], np.random.RandomState(seed))

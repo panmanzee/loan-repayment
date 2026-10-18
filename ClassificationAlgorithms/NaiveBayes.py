@@ -1,56 +1,4 @@
-"""
-Naive Bayes (from scratch) - Classification task (target: not.fully.paid, 1 = defaulted)
 
-Everything is written from scratch with NumPy. The file is self-contained (it does not import Common/).
-
-THE MODEL
----------
-Bayes' theorem turns "how likely is this borrower's profile if they default?" into "how likely is a default
-given this profile?":
-
-        P(y | x)  =  P(x | y) * P(y) / P(x)             <- posterior = likelihood * prior / evidence
-
-Writing P(x | y) for 23 features at once would need an enormous table, so Naive Bayes makes ONE assumption:
-
-        P(x | y)  =  P(x_1 | y) * P(x_2 | y) * ... * P(x_d | y)       <- features independent GIVEN the class
-
-so only d small one-dimensional distributions per class have to be estimated. We work in log space so that
-23 tiny probabilities do not underflow to 0:
-
-        log P(y=c | x)  ~  log P(y=c)  +  sum_j  log P(x_j | y=c)         (P(x) is the same for both classes)
-
-        P(default | x)  =  sigmoid( score_1 - score_0 )     <- the "evidence" cancels, only a difference is needed
-
-Each feature gets the density that matches its type (kind="mixed", the default):
-
-    * binary feature (0/1, e.g. the one-hot `purpose_*`, `high_revol_util`)   -> Bernoulli with Laplace smoothing
-            P(x_j=1 | y=c) = (count_c(x_j=1) + alpha) / (n_c + 2*alpha)
-    * numeric feature                                                         -> Gaussian
-            P(x_j | y=c) = N(x_j ; mu_jc , sigma_jc^2)      mu, sigma^2 = (weighted) mean / variance inside class c
-
-kind="gaussian"    : every feature Gaussian (this is what sklearn's GaussianNB does).
-kind="categorical" : every feature is cut into `n_bins` equal-frequency bins and treated as a discrete variable
-                     with Laplace smoothing - the counting version taught in Discrete Mathematics.
-
-WHY IT IS INTERESTING ON THIS DATASET
--------------------------------------
-The "naive" assumption is clearly false here (fico, int.rate and fico_rate_gap move together, installment and
-income are linked ...), so the probabilities come out over-confident (they are pushed towards 0 / 1) -
-but the RANKING of borrowers is still decent, which is what ROC-AUC measures. `explain()` shows each feature's
-log-likelihood-ratio contribution, so the prediction is fully traceable.
-
-Class imbalance: `prior="empirical"` uses the observed 84/16 split; `prior="balanced"` uses 50/50;
-`prior="sqrt"` (project convention, like the other models) multiplies the positive prior by
-sqrt((n-n_pos)/n_pos). The threshold is picked on the validation set anyway (`pick_threshold`).
-
-Example
--------
-    nb = NaiveBayesScratch(kind="mixed")
-    nb.fit(X_tr, y_tr, feature_names=names)
-    proba = nb.predict_proba(X_te)[:, 1]
-    print(nb.export_text(top=5))          # strongest evidence features
-    nb.save("saved_models/naive_bayes.npz"); nb2 = NaiveBayesScratch.load("saved_models/naive_bayes.npz")
-"""
 import time
 
 import numpy as np
@@ -59,7 +7,7 @@ _LOG_2PI = np.log(2.0 * np.pi)
 
 
 def _sigmoid(z):
-    return 0.5 * (1.0 + np.tanh(0.5 * z))          # numerically stable
+    return 0.5 * (1.0 + np.tanh(0.5 * z))        
 
 
 class NaiveBayesScratch:
@@ -99,11 +47,11 @@ class NaiveBayesScratch:
         if self.kind == "categorical":
             self.feature_type_ = np.array(["categorical"] * d)
 
-        # Gaussian parameters (all columns; only used by the gaussian ones)
+        
         self.theta_ = np.zeros((2, d)); self.var_ = np.ones((2, d))
-        # Bernoulli: P(x=1 | c)
+        
         self.p1_ = np.full((2, d), 0.5)
-        # categorical: bin edges per feature and log P(bin | c)
+        
         self.edges_ = [None] * d; self.cat_logp_ = [None] * d
 
         for c in (0, 1):
@@ -112,7 +60,7 @@ class NaiveBayesScratch:
             mu = (wc[:, None] * Xc).sum(0) / sw
             self.theta_[c] = mu
             self.var_[c] = (wc[:, None] * (Xc - mu) ** 2).sum(0) / sw
-        # same variance floor as the textbook / sklearn recipe: epsilon = var_smoothing * (largest feature variance)
+        
         self.epsilon_ = self.var_smoothing * X.var(axis=0).max()
         self.var_ = self.var_ + self.epsilon_
 
@@ -132,13 +80,12 @@ class NaiveBayesScratch:
                     lp[c] = np.log(cnt / cnt.sum())
                 self.cat_logp_[j] = lp
 
-        # per-feature "importance" = symmetric KL divergence between the two class-conditional distributions
+        
         self.feature_importances_ = self._divergence(X)
         self.fit_time_ = time.time() - t0
         self.best_threshold_ = 0.5
         return self
 
-    # --------------------------------------------------------- log-likelihoods
     def _feature_loglik(self, X):
         """Array (n, 2, d): log P(x_j | y=c) for every row, class and feature."""
         X = np.asarray(X, dtype=np.float64); n, d = X.shape
@@ -157,12 +104,12 @@ class NaiveBayesScratch:
         return out
 
     def _divergence(self, X):
-        ll = self._feature_loglik(X)                      # (n, 2, d)
-        # E_x~train[ |log P(x|1) - log P(x|0)| ] : how strongly the feature separates the classes on average
+        ll = self._feature_loglik(X)                  
+        
         return np.abs(ll[:, 1, :] - ll[:, 0, :]).mean(axis=0)
 
     def joint_log_likelihood(self, X):
-        """(n, 2) matrix  log P(y=c) + sum_j log P(x_j | y=c)   (the numerator of Bayes' theorem, in logs)."""
+        
         ll = self._feature_loglik(X).sum(axis=2)
         return ll + np.log(self.class_prior_)[None, :]
 
@@ -175,7 +122,7 @@ class NaiveBayesScratch:
         return np.exp(self.predict_log_proba(X))
 
     def decision_function(self, X):
-        """log-odds of default = log P(y=1|x) - log P(y=0|x)."""
+        
         jll = self.joint_log_likelihood(X)
         return jll[:, 1] - jll[:, 0]
 
@@ -184,9 +131,8 @@ class NaiveBayesScratch:
 
     # -------------------------------------------------------------- insight
     def explain(self, x, top=5):
-        """Why does the model score this one row the way it does? Returns [(feature, log-likelihood-ratio)] sorted."""
         ll = self._feature_loglik(np.atleast_2d(x))[0]
-        llr = ll[1] - ll[0]                                # >0 pushes towards default
+        llr = ll[1] - ll[0]                               
         order = np.argsort(-np.abs(llr))[:top]
         return [(self.feature_names_[j], float(llr[j])) for j in order]
 
@@ -212,7 +158,6 @@ class NaiveBayesScratch:
         return rows[:top] if top else rows
 
     def pick_threshold(self, X_val, y_val, metric="f1"):
-        """Choose the decision threshold on the VALIDATION set; stored in best_threshold_."""
         p = self.predict_proba(X_val)[:, 1]
         y = np.asarray(y_val).astype(int)
         grid = np.unique(np.quantile(p, np.linspace(0.02, 0.98, 97)))

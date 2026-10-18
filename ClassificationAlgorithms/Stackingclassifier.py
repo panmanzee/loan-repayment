@@ -36,21 +36,6 @@ How the base models are trained inside the folds: each fold's training part is s
 train / inner validation pair, and the validation half is what the base models use for early stopping.
 The outer validation set is used only for the final refit and for choosing the threshold, like every
 other model in this folder.
-
-Example
--------
-    import sys; sys.path.insert(0, "Common"); sys.path.insert(0, "ClassificationAlgorithms")
-    from data_classification import build_classification_data, load_dataset, train_val_test_split_scratch
-    from metrics_classification import evaluate_on_test
-    from Stackingclassifier import StackingClassifierScratch, default_base_models
-
-    X, y, names = build_classification_data(load_dataset())
-    X_tr, X_va, X_te, y_tr, y_va, y_te = train_val_test_split_scratch(X, y)
-
-    st = StackingClassifierScratch(default_base_models(), n_folds=5)
-    st.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names, early_stopping_rounds=30)
-    print(st.summary())                 # base models + how much the meta-model trusts each one
-    proba = st.predict_proba(X_te)[:, 1]
 """
 
 import inspect
@@ -65,7 +50,6 @@ def _sigmoid(z):
 
 
 def _auc(y, s):
-    """ROC-AUC by the rank-sum identity, ties get the average rank (self-contained copy)."""
     y = np.asarray(y).astype(int)
     s = np.asarray(s, dtype=float)
     n1 = int(y.sum())
@@ -114,7 +98,7 @@ def _default_names(n, prefix="feat"):
 
 
 def _stratified_folds(y, n_folds, seed):
-    """Folds that keep the class ratio (a plain k-fold can hand a fold 0 positives on 16% data)."""
+    
     y = np.asarray(y).astype(int).ravel()
     rng = np.random.RandomState(seed)
     folds = [[] for _ in range(int(n_folds))]
@@ -127,7 +111,7 @@ def _stratified_folds(y, n_folds, seed):
 
 
 def _stratified_split(y, val_size, seed):
-    """Index split (fit_idx, val_idx) that keeps the class ratio."""
+
     y = np.asarray(y).astype(int).ravel()
     n_val = int(round(len(y) * float(val_size)))
     n_val = max(1, min(n_val, len(y) - 1))
@@ -141,18 +125,14 @@ def _stratified_split(y, val_size, seed):
             val.extend(idx[:cut].tolist())
             fit.extend(idx[cut:].tolist())
         else:
-            fit.extend(idx.tolist())                 # a lonely row stays in the fit part
-    if not val:                                      # never hand an empty eval_set to a base model
+            fit.extend(idx.tolist())                 
+    if not val:                                      
         val.append(fit.pop())
     return np.array(sorted(fit), dtype=int), np.array(sorted(val), dtype=int)
 
 
 def _dump_model(model):
-    """
-    Serialise a fitted base model to bytes. Some models in this folder (the older tree / logistic files)
-    have no get_state(), but every one of them survives joblib, so pickling is the one mechanism that
-    works for all of them - and for scikit-learn estimators, which have no state protocol either.
-    """
+
     import io
     import joblib
     buf = io.BytesIO()
@@ -167,12 +147,7 @@ def _load_model(blob):
 
 
 def _accepts_param(model, name):
-    """
-    Does this model's fit() accept that keyword? Not every model does: the DecisionTree in this folder
-    has no eval_set, and a scikit-learn estimator (perfectly usable as a base model here) takes neither
-    eval_set nor feature_names nor early_stopping_rounds. Asking the signature once is safer than
-    catching a TypeError, which would also hide a genuine error inside fit().
-    """
+
     try:
         params = inspect.signature(model.fit).parameters
     except (TypeError, ValueError):
@@ -181,18 +156,12 @@ def _accepts_param(model, name):
 
 
 def _accepts_eval_set(model):
-    """Kept for readability: the flag that decides whether a base model early-stops on the inner split."""
     return _accepts_param(model, "eval_set")
 
 
 # ======================================================================================= meta model
 class _MetaLogistic:
-    """
-    The blender: L2-regularised logistic regression, written from scratch, fitted by Newton-Raphson on a
-    handful of columns (one per base model). Kept inside this file so the stacker works even if the other
-    files change; any object with fit/predict_proba can be passed as `meta_model` instead, including
-    LogisticRegressionScratch from Logisticregression.py.
-    """
+
 
     def __init__(self, reg_lambda=1.0, standardize=True, max_iter=100, tol=1e-8):
         self.reg_lambda = float(reg_lambda)
@@ -212,7 +181,7 @@ class _MetaLogistic:
         Z = np.column_stack([np.ones(n), (X - self.mean_) / self.scale_])
         beta = np.zeros(d + 1)
         ridge = np.eye(d + 1) * self.reg_lambda
-        ridge[0, 0] = 0.0                                   # never penalise the intercept
+        ridge[0, 0] = 0.0                                  
         self.history_ = []
         for _ in range(self.max_iter):
             p = _sigmoid(Z @ beta)
@@ -221,7 +190,7 @@ class _MetaLogistic:
             hess = (Z * h[:, None]).T @ Z + ridge
             try:
                 step = np.linalg.solve(hess, grad)
-            except np.linalg.LinAlgError:                    # singular: fall back to a small ridge
+            except np.linalg.LinAlgError:                   
                 step = np.linalg.lstsq(hess + 1e-6 * np.eye(d + 1), grad, rcond=None)[0]
             beta = beta - step
             self.history_.append(_wlogloss(y, _sigmoid(Z @ beta), w))
@@ -260,33 +229,7 @@ class _MetaLogistic:
 
 # =================================================================================== the stacker
 class StackingClassifierScratch:
-    """
-    Stack of classifiers with a learned meta-model.
-
-    Parameters
-    ----------
-    base_models   list of (name, factory) or (name, factory, use_val) pairs. `factory()` must return a
-                  FRESH, unfitted model (that is what makes the folds independent). A fitted instance is
-                  also accepted and cloned through its get_state()/from_state(), but factories are
-                  cheaper. use_val=False means "do not hand this model an eval_set" (for the models whose
-                  fit() does not take one) - it is detected from the signature when not given.
-    meta_model    the second-level model; None = the built-in L2 logistic regression (_MetaLogistic).
-                  Anything with fit/predict_proba works.
-    n_folds       folds used to build the out-of-fold meta-features (5 is the usual choice; more folds =
-                  more honest columns but n_folds times the training cost)
-    inner_val     share of each fold's training part held out for the base models' early stopping
-    passthrough   also give the meta-model the original features (standard stacking option; False keeps
-                  the meta-model interpretable - one weight per base model)
-    random_state  seed for the folds and for the base models' factories (passed as random_state when the
-                  factory accepts it)
-
-    Fitted attributes
-    -----------------
-    oof_proba_ (n_train x n_base, the honest meta-features), meta_ (the fitted blender),
-    bases_ (list of base models refitted on the full training set), base_names_,
-    oof_table_ / val_table_ (per base model: OOF and validation ROC-AUC / PR-AUC), meta_weights_,
-    history_ (per-fold curves), best_threshold_, fit_time_
-    """
+   
 
     def __init__(self, base_models=None, meta_model=None, n_folds=5, inner_val=0.15,
                  passthrough=False, meta_reg_lambda=1.0, random_state=42, feature_names=None):
@@ -303,7 +246,7 @@ class StackingClassifierScratch:
 
     # --------------------------------------------------------------- utilities
     def _specs(self):
-        """Normalise base_models into (name, factory, use_val)."""
+      
         if not self.base_models:
             self.base_models = default_base_models(random_state=self.random_state)
         specs = []
@@ -318,7 +261,7 @@ class StackingClassifierScratch:
         return specs
 
     def _make_base(self, factory, seed_offset=0):
-        """A fresh base model (or a clone of a fitted instance)."""
+        
         if callable(factory):
             try:
                 return factory(random_state=self.random_state + seed_offset)
@@ -366,7 +309,7 @@ class StackingClassifierScratch:
         self.base_names_ = [s[0] for s in specs]
         n_base = len(specs)
         n = len(X)
-        # never ask for more folds than the minority class has rows (a fold with no positives is useless)
+        
         n_folds = max(2, min(self.n_folds, int(np.bincount(y).min())))
         self.n_folds_ = int(n_folds)
 
@@ -386,7 +329,7 @@ class StackingClassifierScratch:
             aucs = [_auc(y[fold], oof[fold, j]) for j in range(n_base)]
             history["fold"].append(k + 1)
             history["oof_auc"].append(float(np.mean(aucs)))
-            # fold curves: what the fold's held-out rows looked like for the base average
+          
             history["train_logloss"].append(_wlogloss(y[fold], np.clip(oof[fold].mean(axis=1), 1e-6, 1 - 1e-6)))
             history["val_logloss"].append(_wlogloss(y[fold], np.clip(oof[fold].mean(axis=1), 1e-6, 1 - 1e-6)))
             if verbose:
@@ -498,17 +441,13 @@ class StackingClassifierScratch:
         return {name: m.predict_proba(X)[:, 1] for name, m in zip(self.base_names_, self.bases_)}
 
     def feature_importance_table(self, top=None):
-        """
-        How much the meta-model trusts each base model: |weight| normalised to sum to 1. This is the
-        table worth putting in the report next to each base model's own score.
-        """
         self._check_fitted()
         rows = [(self.base_names_[j], float(self.feature_importances_[j])) for j in range(len(self.base_names_))]
         rows.sort(key=lambda r: -r[1])
         return rows[:top] if top else rows
 
     def coefficient_table(self, top=None):
-        """Signed meta weights (positive = the model pushes towards 'default'), with the intercept."""
+    
         self._check_fitted()
         rows = [{"feature": f"p({self.base_names_[j]})", "weight": float(self.meta_weights_[j])}
                 for j in range(len(self.base_names_))]
@@ -517,7 +456,7 @@ class StackingClassifierScratch:
         return rows[:top] if top else rows
 
     def explain(self, X, top=6):
-        """One borrower: what every base model said, the meta-model's own weights, and the answer."""
+    
         self._check_fitted()
         x = np.asarray(X, dtype=float).reshape(1, -1)
         members = {name: float(m.predict_proba(x)[0, 1]) for name, m in zip(self.base_names_, self.bases_)}
@@ -529,7 +468,7 @@ class StackingClassifierScratch:
                 "contributions": dict(sorted(contrib.items(), key=lambda kv: -abs(kv[1]))[:top])}
 
     def base_model_table(self):
-        """(name, OOF AUC, OOF AP, validation AUC) per base model + the stack's own row."""
+        
         self._check_fitted()
         rows = []
         for j, (name, auc_oof, ap_oof) in enumerate(self.oof_table_):
@@ -610,15 +549,6 @@ class StackingClassifierScratch:
 
 
 def default_base_models(random_state=42, include_slow=False):
-    """
-    A sensible default stack: models that are (a) fast enough to train n_folds + 1 times and (b) good at
-    different things - a linear model, two different neural-ish learners, a kernel model, a distance
-    model and a probabilistic one. With include_slow=True the tree ensembles and the EBM are added too
-    (better, but the fit then takes minutes instead of ~40 seconds).
-
-    Each entry is (name, factory, use_val): the flag says whether that model's fit() accepts an
-    eval_set (the DecisionTree and the Naive Bayes in this folder do not).
-    """
     from Logisticregression import LogisticRegressionScratch
     from Perceptron import PerceptronScratch
     from NaiveBayes import NaiveBayesScratch

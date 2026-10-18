@@ -1,54 +1,4 @@
-"""
-Perceptron  &  Single-Layer Perceptron (SLP)  (from scratch) - Classification task (target: not.fully.paid)
 
-Everything is written from scratch with NumPy. The file is self-contained (it does not import Common/).
-
-1) PerceptronScratch  -  Rosenblatt's perceptron (1958)
-----------------------------------------------------------
-One artificial neuron with a STEP activation:
-
-        s = w . x + b                      <- weighted sum of the (standardised) features
-        y_hat = +1 if s > 0 else -1        <- hard decision, no probability at all
-
-Learning is "mistake driven": look at one borrower at a time, and ONLY when the neuron is wrong move the
-separating hyperplane a little towards that borrower:
-
-        if t_i * s_i <= 0 :   w <- w + eta * c_i * t_i * x_i ;   b <- b + eta * c_i * t_i          (t = +1 default / -1 paid)
-
-c_i is the sample weight (defaulters count sqrt((n-n_pos)/n_pos) times more - the project's imbalance convention).
-Perceptron convergence theorem: if the classes can be separated by a straight line, this reaches zero mistakes in
-a finite number of updates. LOAN DATA IS NOT LINEARLY SEPARABLE (the classes overlap heavily), so the classic
-algorithm never settles and keeps jumping around. Two standard repairs are implemented:
-
-    variant="pocket"   : keep ("put in the pocket") the weights of the best epoch seen so far (lowest weighted error)
-    variant="averaged" : return the AVERAGE of the weights over every step (Freund & Schapire) - very stable
-
-A step neuron has no probability, so `predict_proba` squashes the score with a 1-D logistic curve fitted on the
-training scores (Platt scaling, solved by Newton's method below). ROC-AUC only needs the raw score
-(`decision_function`) and is unaffected by that squashing.
-
-2) SingleLayerPerceptronScratch (SLP)  -  one neuron with a SIGMOID activation, trained by gradient descent
------------------------------------------------------------------------------------------------------
-Replace the step by the smooth sigmoid, so the neuron outputs a probability and has a gradient:
-
-        p_i  = sigmoid(w . x_i + b)
-        loss = -(1/W) sum_i c_i [ y_i log p_i + (1-y_i) log(1-p_i) ]  +  (lambda/2) ||w||^2        (weighted binary cross-entropy)
-        dloss/dz_i = c_i (p_i - y_i) / W   ->   grad_w = X^T dz + lambda w ,  grad_b = sum dz        (the "delta rule")
-
-Mini-batch SGD with momentum, learning-rate decay, early stopping on the validation loss and automatic
-restoring of the best epoch. HONEST NOTE: a single sigmoid neuron trained on cross-entropy IS logistic regression
-(only the optimiser differs); the SLP is the building block of the MLP in MLP.py - add hidden layers and you
-get the multi-layer network.
-
-Both classes standardise X themselves (fitted on training rows only), keep `history_` for the loss / performance
-curves, expose `feature_importances_` (|weight| per 1 SD) and have save() / load().
-
-Example
--------
-    slp = SingleLayerPerceptronScratch(learning_rate=0.05, n_epochs=200, l2=1e-3)
-    slp.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names, early_stopping_rounds=20)
-    proba = slp.predict_proba(X_te)[:, 1]
-"""
 import time
 
 import numpy as np
@@ -59,13 +9,13 @@ def _sigmoid(z):
 
 
 def sqrt_scale_pos_weight(y):
-    """Project-wide imbalance weight for the positive rows: sqrt((n - n_pos) / n_pos)  (~2.29 here)."""
+    """ sqrt((n - n_pos) / n_pos)  (~2.29 here)."""
     y = np.asarray(y, dtype=int).ravel(); n_pos = int(y.sum())
     return 1.0 if n_pos in (0, len(y)) else float(np.sqrt((len(y) - n_pos) / n_pos))
 
 
 def _auc(y, s):
-    """ROC-AUC by the rank-sum (Mann-Whitney U) identity, ties get average rank."""
+    
     y = np.asarray(y).astype(int); s = np.asarray(s, dtype=float)
     n1 = int(y.sum()); n0 = len(y) - n1
     if n1 == 0 or n0 == 0:
@@ -97,7 +47,7 @@ def _wlogloss(y, p, w):
 
 
 class _Base:
-    """Shared plumbing: standardisation, thresholds, importances, persistence."""
+    
 
     def _fit_scaler(self, X):
         self.mean_ = X.mean(axis=0); sd = X.std(axis=0); sd[sd == 0] = 1.0; self.scale_ = sd
@@ -164,8 +114,8 @@ class PerceptronScratch(_Base):
         t = 2 * y - 1
         rng = np.random.RandomState(self.random_state)
         w = np.zeros(d); b = 0.0
-        w_sum = np.zeros(d); b_sum = 0.0; steps = 0                      # for the averaged perceptron
-        best = (np.inf, w.copy(), b)                                      # for the pocket
+        w_sum = np.zeros(d); b_sum = 0.0; steps = 0                     
+        best = (np.inf, w.copy(), b)                                      
         hist = {k: [] for k in ("epoch", "mistakes", "train_error", "train_accuracy", "train_auc", "val_accuracy", "val_auc")}
         Zv = yv = None
         if eval_set:
@@ -174,7 +124,7 @@ class PerceptronScratch(_Base):
             order = rng.permutation(n) if self.shuffle else np.arange(n)
             mistakes = 0
             for i in order:
-                if t[i] * (Z[i] @ w + b) <= 0:                            # wrong (or on the line) -> update
+                if t[i] * (Z[i] @ w + b) <= 0:                            
                     step = self.learning_rate * cw[i] * t[i]
                     w += step * Z[i]; b += step; mistakes += 1
                 w_sum += w; b_sum += b; steps += 1
@@ -189,7 +139,7 @@ class PerceptronScratch(_Base):
                 best = (werr, w.copy(), b)
             if verbose and ep % 10 == 0:
                 print(f"  epoch {ep:>3} | mistakes {mistakes:>5} | weighted train error {werr:.4f}")
-            if mistakes == 0:                                             # linearly separable -> converged
+            if mistakes == 0:                                             
                 self.converged_ = True; break
         else:
             self.converged_ = False
@@ -207,11 +157,7 @@ class PerceptronScratch(_Base):
         return self
 
     def _fit_platt(self, Z, y, cw):
-        """
-        P(y=1|s) = sigmoid(A*s + B), fitted by Newton-Raphson on the weighted log-loss (1-D logistic regression).
-        The raw score is first divided by its own spread (a perceptron's weight scale is arbitrary) and A gets a
-        tiny ridge so a score with NO signal cannot send A to infinity.
-        """
+
         s = Z @ self.coef_ + self.intercept_
         self._platt_sd = float(s.std()) or 1.0
         s = s / self._platt_sd
@@ -233,7 +179,7 @@ class PerceptronScratch(_Base):
         return np.column_stack([1 - p, p])
 
     def predict_step(self, X):
-        """The pure perceptron decision: sign(w.x + b)  ->  1 if > 0 else 0 (no threshold, no probability)."""
+
         return (self.decision_function(X) > 0).astype(int)
 
     def get_state(self):
@@ -279,7 +225,7 @@ class SingleLayerPerceptronScratch(_Base):
             for s in range(0, n, self.batch_size):
                 idx = order[s:s + self.batch_size]
                 p = _sigmoid(Z[idx] @ w + b)
-                dz = cw[idx] * (p - y[idx]) / cw[idx].sum()                # delta rule
+                dz = cw[idx] * (p - y[idx]) / cw[idx].sum()               
                 gw = Z[idx].T @ dz + self.l2 * w; gb = dz.sum()
                 vw = self.momentum * vw - lr * gw; vb = self.momentum * vb - lr * gb
                 w += vw; b += vb
@@ -318,7 +264,6 @@ class SingleLayerPerceptronScratch(_Base):
         p = _sigmoid(self.decision_function(X))
         return np.column_stack([1 - p, p])
 
-    # --- plug-in names used by run_classification.py (unweighted log-loss curves) ---
     @property
     def train_loss(self):
         return self.history_.get("train_logloss") if getattr(self, "history_", None) else None
