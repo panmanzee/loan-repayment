@@ -1,45 +1,4 @@
-"""
-Run the whole CLASSIFICATION task (target: not.fully.paid) -- the twin of run_regression.py.
 
-  load data -> data analysis -> split train/validation/test -> pick the better model's blend weight by CV on TRAIN
-  -> train the 15 scratch models -> loss -> thresholds aimed at CATCHING DEFAULTERS
-  -> test metrics (accuracy, precision/recall/F1, ROC-AUC, PR-AUC, confusion matrix) -> curves for every model
-  -> scratch-vs-scikit-learn verification for every model -> 5-fold cross-validation -> benchmark table
-  -> feature importance for every model -> save + load the best model and score example borrowers
-  -> model-specific interpretability -> 10 batch runs over every model -> list every result file.
-
-Goal of this half of the project: catch the defaulters (the 16% positive class) without flagging everybody.
-Ranking quality is judged threshold-free by ROC-AUC / PR-AUC / recall@top-k; the flagging decision uses a
-threshold tuned on the VALIDATION set only, and section 6 prints the full rule ladder so the trade-off is
-visible on the data: a plain 0.5 catches ~14% of the defaulters, f1 ~67% while flagging ~44% of applicants,
-f2 ~91% but flagging ~76% of ALL applicants (enrichment barely 1.19x). The rule in use is the one-word
-constant FLAG_RULE at the top of this file.
-
-Run:  python run_classification.py        (from the project root)
-Outputs: printed tables; Results/<topic folders>/ (CSV tables + PNG charts); TrainedModels/*.joblib.
-Charts that matter here: classification_loss_curves_all_models.png (every model on one axis),
-classification_threshold_rules.png + _ladder.csv (what each flagging rule costs), classification_recall_at_topk.png
-(defaulters caught when the riskiest x% is reviewed). Set CLF_QUICK=1 for a ~8-minute smoke run while editing.
-
-Section map (the topics of "Quantitative results, benchmarking, analysis & discussion"):
-   1  Data analysis                                            01_Data_Analysis
-   2  Train / validation / test split
-   3  Hyper-parameter search of the better model (3-fold CV on the train set)
-   4  Train the 15 scratch models
-   5  Loss (train / validation / test log loss, curves)        02_Loss
-   6  Catching defaulters: rule ladder + recall@top-k           09_Others
-   7  Confusion matrix, accuracy, precision / recall / F1      03_Confusion_Matrix, 04_Accuracy, 05_Precision_Recall_F1
-   8  ROC-AUC, PR-AUC and the ROC / PR curves                  06_ROC_AUC
-   9  Performance curve of every staged model                  07_Performance_Curve
-  10  Extra check: scratch vs scikit-learn, every model        09_Others
-  11  5-fold cross-validation (stratified)                     09_Others
-  12  Benchmark table (every model, every metric)              09_Others
-  13  Feature importance for every model                       09_Others
-  14  Save + load the best model, score example borrowers       TrainedModels/
-  15  Model-specific interpretability (perceptron, EBM, NB)     09_Others
-  16  Batch runs: 10 fresh random splits, every model           09_Others
-  17  Checklist of every file written
-"""
 import os
 import re
 import sys
@@ -84,24 +43,20 @@ RESULTS = os.path.join(ROOT, "Results")
 FOLDERS = {"data": "01_Data_Analysis", "loss": "02_Loss", "cm": "03_Confusion_Matrix", "acc": "04_Accuracy",
            "prf": "05_Precision_Recall_F1", "roc": "06_ROC_AUC", "perf": "07_Performance_Curve", "other": "09_Others"}
 BETTER = "Blend EBM+MLP (better model)"
-# One-word switch for the flagging rule (section 6 compares all of them on the data):
-#   "f1"   balanced   - catches about 2/3 of the defaulters while flagging under half of the applicants
-#   "f1.5" middle     - one notch more recall than f1, still nowhere near "flag everybody"      <- default
-#   "f2"   catch-max  - catches ~90% of defaulters but flags ~76% of ALL applicants (enrichment only 1.19x)
-#   "precision>=1.5x base" - conservative: flag only while the flagged group stays 1.5x enriched
+
 FLAG_RULE = "f1.5"
 COLORS = {"Logistic Regression": "#2a78d6", "Decision Tree": "#eb6834", "Random Forest": "#1baf7a",
           "Gradient Boosting": "#eda100", "XGBoost": "#8b5cf6",
           "SVC (linear)": "#00a3a3", "SVC (rbf)": "#00838f", "k-NN": "#c2185b",
           "Naive Bayes": "#d4549a", "Perceptron (averaged)": "#0f9bb3", "Single-Layer Perceptron": "#9aa31a",
           "MLP": "#8d6e63", "EBM (additive)": "#111111", "Stacking (5 bases)": "#7b1fa2", BETTER: "#d62728"}
-EBM_WEIGHT, N_MLPS = 0.5, 5          # overwritten by the validation search in section 3
-TOPK = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]     # flag the riskiest 5% ... 50% of the applicants
-# Quick check while editing (never for the report): CLF_QUICK=1 run_classification.py
+EBM_WEIGHT, N_MLPS = 0.5, 5         
+TOPK = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]     #
+
 QUICK = os.environ.get("CLF_QUICK") == "1"
-N_BATCH = 1 if QUICK else 10                     # 10 fresh random 60/20/20 splits in section 16
-CV_FOLDS = 2 if QUICK else 5                     # stratified folds in section 11
-SEARCH_FOLDS = 2 if QUICK else 3                       # CV folds used to choose the blend weight
+N_BATCH = 1 if QUICK else 10                    
+CV_FOLDS = 2 if QUICK else 5                     
+SEARCH_FOLDS = 2 if QUICK else 3                       
 SEARCH_WEIGHTS = (0.2, 0.7) if QUICK else (0.0, 0.2, 0.3, 0.5, 0.7)
 
 
@@ -386,7 +341,7 @@ section("3. HYPER-PARAMETER SEARCH FOR THE BETTER MODEL  [3-fold CV on the TRAIN
 print("  the blend weight cannot be read off one validation split: measured on this data, a single split picks")
 print("  0.7 while 3-fold CV on the train set (and the paired test runs) prefer the MLP-dominated end.")
 search_rows = []
-search_folds = stratified_folds(y_tr, SEARCH_FOLDS, SEED)      # indices into the TRAIN arrays
+search_folds = stratified_folds(y_tr, SEARCH_FOLDS, SEED)      
 for w in SEARCH_WEIGHTS:
     t0 = time.time()
     fold_scores = []
