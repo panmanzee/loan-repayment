@@ -1,35 +1,4 @@
-"""
-Shared evaluation metrics for the CLASSIFICATION task (target: not.fully.paid), written from scratch.
-This is the classification twin of Common/metrics.py (which holds the regression metrics).
 
-Every function takes plain numpy arrays, so it works with any model (the scratch XGBoost in
-ClassificationAlgorithms/XGB.py or anything else).
-
-Loss        : logloss (binary cross-entropy) -- the classification LOSS
-Threshold   : accuracy, confusion_matrix, precision, recall, f1
-Rank-based  : average_precision (PR-AUC), roc_auc (ROC-AUC) + the two curve helpers used for plots
-
-Why two AUCs: the target is imbalanced (16% positives), so a random classifier already scores
-ROC-AUC 0.5 but PR-AUC equal to the positive rate (0.16). PR-AUC is therefore the honest headline
-number for this data set; ROC-AUC is reported next to it.
-
-HOW THE DECISION THRESHOLD IS SUPPOSED TO WORK
-----------------------------------------------
-A model only outputs a PROBABILITY. Turning it into yes/no needs a threshold, and 0.5 is NOT a
-good choice for an imbalanced target: `scale_pos_weight` shifts the probabilities, so 0.5 can mean
-"almost never say yes". The rules used everywhere in this project:
-
-  1. threshold-free metrics (logloss, roc_auc, average_precision) need no threshold -- they are
-     computed straight from the probabilities.
-  2. threshold-based metrics take an explicit `threshold`. The default 0.5 is only there so the
-     function can be called without thinking; it is the "naive" reference point, not the best one.
-  3. The BEST threshold is chosen on the VALIDATION set with best_threshold() and then reused on the
-     test set. Never choose it on the test set -- that is leakage and inflates the score.
-  4. evaluate_on_test() does points 3 for you in one call (choose on val, report on test) and also
-     prints the 0.5 reference so the difference is visible.
-  5. Passing threshold=None to a metric means "pick the threshold on the data I just handed you";
-     that is fine for a quick look and for validation data, wrong for the test set.
-"""
 import numpy as np
 
 
@@ -47,23 +16,18 @@ def logloss(y_true, proba, eps=1e-15):
 # Threshold-based metrics
 # -----------------------------------------------------------------------------
 def _as_pred(y_true, proba, threshold):
-    """Turn probabilities into 0/1 labels (pass threshold=0.0 if you already have hard labels)."""
     pred = (np.asarray(proba, dtype=float) >= threshold).astype(int)
     return np.asarray(y_true, dtype=int).ravel(), pred.ravel()
 
 
 def _resolve_threshold(y_true, proba, threshold, metric="f1"):
-    """
-    threshold=None  -> pick the best one for `metric` on the data handed in (validation use);
-    a number        -> use it as given (this is what the test set must always do).
-    """
+
     if threshold is None:
         return best_threshold(y_true, proba, metric=metric)[0]
     return float(threshold)
 
 
 def accuracy(y_true, proba, threshold=0.5):
-    """Fraction of correct yes/no decisions. threshold=None -> best threshold for accuracy here."""
     threshold = _resolve_threshold(y_true, proba, threshold, metric="accuracy")
     y, pred = _as_pred(y_true, proba, threshold)
     return float(np.mean(pred == y))
