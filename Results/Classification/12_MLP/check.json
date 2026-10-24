@@ -1,0 +1,16 @@
+[
+  {
+    "check": "MLP vs sklearn MLPClassifier (same shape)",
+    "difference": NaN,
+    "AUC scratch": 0.7089334595150146,
+    "AUC sklearn": 0.6953506120829136,
+    "the difference is": "AUC only"
+  },
+  {
+    "check": "MLP back-propagation vs numerical gradient",
+    "difference": 3.8120160260380454e-08,
+    "AUC scratch": NaN,
+    "AUC sklearn": NaN,
+    "the difference is": "max relative error"
+  }
+]

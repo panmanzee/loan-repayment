@@ -1,0 +1,7 @@
+{
+  "check": "Gradient Boosting vs sklearn GradientBoostingClassifier",
+  "difference": 0.3708681542738135,
+  "AUC scratch": 0.6928259608633269,
+  "AUC sklearn": 0.6663735995359771,
+  "the difference is": "max |dP|"
+}

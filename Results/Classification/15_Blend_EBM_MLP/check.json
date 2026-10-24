@@ -1,0 +1,7 @@
+{
+  "check": "Blend vs w * EBM + (1 - w) * mean(MLPs) recomputed by hand",
+  "difference": 0.0,
+  "AUC scratch": 0.7095379104720619,
+  "AUC sklearn": 0.7095643679213604,
+  "the difference is": "max |dP| (2nd AUC = MLP bag alone)"
+}

@@ -4,9 +4,14 @@ Shared chart code (matplotlib). Every function draws ONE chart and saves it as a
 Style rules (from the dataviz guidelines): a model keeps the same colour in every chart, one series = one colour,
 hairline solid grid, thin marks, no top/right frame, values labelled only where it matters (tips / extremes).
 """
+
+import sys
+
 import matplotlib
 
-matplotlib.use("Agg")  # draw to files only, no window
+IN_NOTEBOOK = "ipykernel" in sys.modules
+if not IN_NOTEBOOK:
+    matplotlib.use("Agg")  # plain script: draw to files only, no window
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, to_rgb
@@ -29,18 +34,40 @@ SHORT = {
 }
 DIVERGING = LinearSegmentedColormap.from_list("blue_gray_red", [BLUE, MID_GRAY, RED])
 
-plt.rcParams.update({
-    "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
-    "text.color": INK, "axes.labelcolor": INK_2, "xtick.color": INK_2, "ytick.color": INK_2,
-    "axes.edgecolor": GRID, "axes.spines.top": False, "axes.spines.right": False,
-    "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.8, "grid.linestyle": "-",
-    "axes.axisbelow": True, "font.size": 10, "axes.titlesize": 11, "axes.titleweight": "semibold",
-    "axes.titlelocation": "left", "legend.frameon": False, "lines.linewidth": 1.8,
-})
+plt.rcParams.update(
+    {
+        "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE,
+        "savefig.facecolor": SURFACE,
+        "text.color": INK,
+        "axes.labelcolor": INK_2,
+        "xtick.color": INK_2,
+        "ytick.color": INK_2,
+        "axes.edgecolor": GRID,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.color": GRID,
+        "grid.linewidth": 0.8,
+        "grid.linestyle": "-",
+        "axes.axisbelow": True,
+        "font.size": 10,
+        "axes.titlesize": 11,
+        "axes.titleweight": "bold",
+        "axes.titlelocation": "left",
+        "legend.frameon": False,
+        "lines.linewidth": 1.8,
+    }
+)
 
 
 def _save(fig, path):
+    """Save the chart as a PNG; inside a notebook it is also shown under the cell."""
     fig.savefig(path, dpi=150, bbox_inches="tight")
+    if IN_NOTEBOOK:
+        from IPython.display import display
+
+        display(fig)
     plt.close(fig)
 
 
@@ -73,7 +100,14 @@ def plot_correlation_bars(corr, path):
     ax.axvline(0, color=INK_2, linewidth=0.8)
     for name in list(c.abs().sort_values(ascending=False).index[:3]):
         v = c[name]
-        ax.text(v + (0.015 if v >= 0 else -0.015), name, f"{v:+.2f}", va="center", ha="left" if v >= 0 else "right", color=INK)
+        ax.text(
+            v + (0.015 if v >= 0 else -0.015),
+            name,
+            f"{v:+.2f}",
+            va="center",
+            ha="left" if v >= 0 else "right",
+            color=INK,
+        )
     ax.set_xlim(-0.85, 0.65)
     ax.grid(axis="y", visible=False)
     ax.set_xlabel("Correlation with int.rate   (blue = lower rate, red = higher rate)")
@@ -94,7 +128,7 @@ def plot_correlation_heatmap(X, feature_cols, y, corr, path, top=10):
     ax.grid(False)
     for s in ax.spines.values():
         s.set_visible(False)
-    for i in range(len(labels)):          # label only the strong cells, not every cell
+    for i in range(len(labels)):  # label only the strong cells, not every cell
         for j in range(len(labels)):
             if abs(m[i, j]) >= 0.5 and i != j:
                 ax.text(j, i, f"{m[i, j]:.2f}", ha="center", va="center", fontsize=8, color=INK)
@@ -115,7 +149,9 @@ def plot_top_features_scatter(X, feature_cols, y, names, path):
         ax.set_title(f"{name}   (r = {r:+.2f})")
         ax.set_xlabel(name)
         ax.set_ylabel("int.rate (%)")
-    fig.suptitle("Interest rate against the four most correlated numeric features", x=0.01, ha="left", fontweight="semibold")
+    fig.suptitle(
+        "Interest rate against the four most correlated numeric features", x=0.01, ha="left", fontweight="bold"
+    )
     fig.tight_layout()
     _save(fig, path)
 
@@ -145,9 +181,15 @@ def plot_loss_curves(histories, path):
         ax.set_title(SHORT[name])
         ax.set_xlabel("Boosting round" if "Boosting" in name else "Gradient-descent iteration")
         ax.set_ylabel("Training loss (MSE, log scale)")
-        ax.plot([len(h)], [h[-1]], "o", color=MODEL_COLORS[name], markersize=7, markeredgecolor=SURFACE, markeredgewidth=2)
-        ax.annotate(f"final {h[-1]:.2e}", (len(h), h[-1]), textcoords="offset points", xytext=(-6, -16), ha="right", color=INK_2)
-    fig.suptitle("Training loss falls, then levels off - the models have finished learning", x=0.01, ha="left", fontweight="semibold")
+        ax.plot(
+            [len(h)], [h[-1]], "o", color=MODEL_COLORS[name], markersize=7, markeredgecolor=SURFACE, markeredgewidth=2
+        )
+        ax.annotate(
+            f"final {h[-1]:.2e}", (len(h), h[-1]), textcoords="offset points", xytext=(-6, -16), ha="right", color=INK_2
+        )
+    fig.suptitle(
+        "Training loss falls, then levels off - the models have finished learning", x=0.01, ha="left", fontweight="bold"
+    )
     fig.tight_layout()
     _save(fig, path)
 
@@ -163,8 +205,12 @@ def plot_train_vs_test_loss(loss_table, path):
     for i, m in enumerate(models):
         ax.bar(x[i] - w / 2 - 0.01, tr[i], w, color=_tint(MODEL_COLORS[m]))
         ax.bar(x[i] + w / 2 + 0.01, te[i], w, color=MODEL_COLORS[m])
-        ax.text(x[i] - w / 2, tr[i], f"{tr[i]:.2e}".replace("e-0", "e-"), ha="center", va="bottom", color=INK_2, fontsize=8)
-        ax.text(x[i] + w / 2, te[i], f"{te[i]:.2e}".replace("e-0", "e-"), ha="center", va="bottom", color=INK, fontsize=8)
+        ax.text(
+            x[i] - w / 2, tr[i], f"{tr[i]:.2e}".replace("e-0", "e-"), ha="center", va="bottom", color=INK_2, fontsize=8
+        )
+        ax.text(
+            x[i] + w / 2, te[i], f"{te[i]:.2e}".replace("e-0", "e-"), ha="center", va="bottom", color=INK, fontsize=8
+        )
     ax.set_xticks(x, [SHORT[m] for m in models])
     ax.grid(axis="x", visible=False)
     ax.set_ylabel("Loss (MSE)")
@@ -181,15 +227,22 @@ def plot_boosting_performance(n_trees, train_mse, test_mse, test_r2, path):
     a.plot(n_trees, test_r2, color=color)
     peak = int(np.argmax(test_r2))
     a.plot([peak], [test_r2[peak]], "o", color=color, markersize=8, markeredgecolor=SURFACE, markeredgewidth=2)
-    a.annotate(f"peak R2 {test_r2[peak]:.4f}\nat {peak} trees", (peak, test_r2[peak]), textcoords="offset points",
-               xytext=(8, -34), color=INK_2)
+    a.annotate(
+        f"peak R2 {test_r2[peak]:.4f}\nat {peak} trees",
+        (peak, test_r2[peak]),
+        textcoords="offset points",
+        xytext=(8, -34),
+        color=INK_2,
+    )
     a.set_ylim(max(0, min(test_r2[20:]) - 0.05), max(test_r2) + 0.02)
     a.set_xlabel("Number of trees")
     a.set_ylabel("Test R2")
     a.set_title("Test R2 as trees are added")
     b.plot(n_trees, train_mse, color=NEUTRAL)
     b.plot(n_trees, test_mse, color=color)
-    b.annotate("train", (n_trees[-1], train_mse[-1]), textcoords="offset points", xytext=(-4, 8), ha="right", color=INK_2)
+    b.annotate(
+        "train", (n_trees[-1], train_mse[-1]), textcoords="offset points", xytext=(-4, 8), ha="right", color=INK_2
+    )
     b.annotate("test", (n_trees[-1], test_mse[-1]), textcoords="offset points", xytext=(-4, 8), ha="right", color=INK_2)
     b.set_yscale("log")
     b.set_xlabel("Number of trees")
@@ -211,8 +264,19 @@ def plot_r2_comparison(table, path):
     ax.barh(y, vals, color=[MODEL_COLORS[m] for m in models], height=0.5)
     cv = [table.loc[m, "CV R2 mean"] for m in models]
     sd = [table.loc[m, "CV R2 std"] for m in models]
-    ax.errorbar(cv, y, xerr=sd, fmt="o", color=INK, markersize=7, markeredgecolor=SURFACE, markeredgewidth=2,
-                capsize=4, linewidth=1.4, label="5-fold CV mean +/- std")
+    ax.errorbar(
+        cv,
+        y,
+        xerr=sd,
+        fmt="o",
+        color=INK,
+        markersize=7,
+        markeredgecolor=SURFACE,
+        markeredgewidth=2,
+        capsize=4,
+        linewidth=1.4,
+        label="5-fold CV mean +/- std",
+    )
     taught = max(table.loc[m, "Test R2"] for m in list(MODEL_COLORS)[:3])
     ax.axvline(taught, color=NEUTRAL, linewidth=1.2)
     ax.text(taught + 0.01, -0.62, "best taught model", color=INK_2, ha="left", va="center", fontsize=8)
@@ -240,7 +304,9 @@ def plot_actual_vs_predicted(y_true, predictions, r2_by_model, path):
         ax.set_title(f"{SHORT[name]}   (R2 = {r2_by_model[name]:.3f})")
         ax.set_xlabel("Actual int.rate (%)")
         ax.set_ylabel("Predicted int.rate (%)")
-    fig.suptitle("Actual vs predicted on the test set - closer to the line is better", x=0.01, ha="left", fontweight="semibold")
+    fig.suptitle(
+        "Actual vs predicted on the test set - closer to the line is better", x=0.01, ha="left", fontweight="bold"
+    )
     fig.tight_layout()
     _save(fig, path)
 
@@ -252,8 +318,16 @@ def plot_cv_per_fold(cv_scores, path):
     for i, m in enumerate(models):
         v = np.array(cv_scores[m])
         ax.hlines(v.mean(), i - 0.28, i + 0.28, color=INK, linewidth=2, zorder=2)
-        ax.plot(i + rng.uniform(-0.12, 0.12, len(v)), v, "o", color=MODEL_COLORS[m], markersize=8,
-                markeredgecolor=SURFACE, markeredgewidth=2, zorder=3)
+        ax.plot(
+            i + rng.uniform(-0.12, 0.12, len(v)),
+            v,
+            "o",
+            color=MODEL_COLORS[m],
+            markersize=8,
+            markeredgecolor=SURFACE,
+            markeredgewidth=2,
+            zorder=3,
+        )
         ax.text(i + 0.32, v.mean(), f"{v.mean():.3f}", va="center", color=INK, fontsize=9)
     ax.set_xticks(range(len(models)), [SHORT[m] for m in models])
     ax.set_xlim(-0.5, len(models) - 0.2)
@@ -269,8 +343,10 @@ def plot_cv_per_fold(cv_scores, path):
 def plot_feature_importance(gain, perm, path, top=10):
     color = MODEL_COLORS["4. Gradient Boosting (better)"]
     fig, (a, b) = plt.subplots(1, 2, figsize=(11, 4.8))
-    for ax, s, title, fmt in ((a, gain, "Share of total error reduction (tree splits)", "{:.0%}"),
-                              (b, perm, "Rise in test loss when the feature is shuffled", "{:.1e}")):
+    for ax, s, title, fmt in (
+        (a, gain, "Share of total error reduction (tree splits)", "{:.0%}"),
+        (b, perm, "Rise in test loss when the feature is shuffled", "{:.1e}"),
+    ):
         s = s.sort_values(ascending=False).head(top)[::-1]
         ax.barh(s.index, s.values, color=color, height=0.55)
         for name, v in list(s.items())[-3:]:
@@ -278,7 +354,9 @@ def plot_feature_importance(gain, perm, path, top=10):
         ax.set_xlim(0, s.max() * 1.2)
         ax.grid(axis="y", visible=False)
         ax.set_title(title)
-    fig.suptitle("Feature importance of the Gradient Boosting model - FICO dominates", x=0.01, ha="left", fontweight="semibold")
+    fig.suptitle(
+        "Feature importance of the Gradient Boosting model - FICO dominates", x=0.01, ha="left", fontweight="bold"
+    )
     fig.tight_layout()
     _save(fig, path)
 
@@ -291,8 +369,12 @@ def plot_residuals(y_pred_by_model, y_true, path):
         ax.set_title(SHORT[name])
         ax.set_xlabel("Predicted int.rate (%)")
         ax.set_ylabel("Residual = actual - predicted (pts)")
-    fig.suptitle("Residuals should scatter randomly around 0 - patterns mean something is missed", x=0.01, ha="left",
-                 fontweight="semibold")
+    fig.suptitle(
+        "Residuals should scatter randomly around 0 - patterns mean something is missed",
+        x=0.01,
+        ha="left",
+        fontweight="bold",
+    )
     fig.tight_layout()
     _save(fig, path)
 
@@ -304,8 +386,16 @@ def plot_scratch_vs_sklearn(ver, path):
     hi = float(max(ver["Scratch R2"].max(), ver["scikit-learn R2"].max())) + 0.03
     ax.plot([lo, hi], [lo, hi], color=INK_2, linewidth=1.2)
     for name, row in ver.iterrows():
-        ax.plot(row["scikit-learn R2"], row["Scratch R2"], "o", markersize=11, color=MODEL_COLORS[name],
-                markeredgecolor=SURFACE, markeredgewidth=2, label=SHORT[name])
+        ax.plot(
+            row["scikit-learn R2"],
+            row["Scratch R2"],
+            "o",
+            markersize=11,
+            color=MODEL_COLORS[name],
+            markeredgecolor=SURFACE,
+            markeredgewidth=2,
+            label=SHORT[name],
+        )
     ax.set_xlim(lo, hi)
     ax.set_ylim(lo, hi)
     ax.set_aspect("equal")

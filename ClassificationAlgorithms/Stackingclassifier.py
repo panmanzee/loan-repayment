@@ -36,6 +36,21 @@ How the base models are trained inside the folds: each fold's training part is s
 train / inner validation pair, and the validation half is what the base models use for early stopping.
 The outer validation set is used only for the final refit and for choosing the threshold, like every
 other model in this folder.
+
+Example
+-------
+    import sys; sys.path.insert(0, "Common"); sys.path.insert(0, "ClassificationAlgorithms")
+    from data_classification import build_classification_data, load_dataset, train_val_test_split_scratch
+    from metrics_classification import evaluate_on_test
+    from Stackingclassifier import StackingClassifierScratch, default_base_models
+
+    X, y, names = build_classification_data(load_dataset())
+    X_tr, X_va, X_te, y_tr, y_va, y_te = train_val_test_split_scratch(X, y)
+
+    st = StackingClassifierScratch(default_base_models(), n_folds=5)
+    st.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], feature_names=names, early_stopping_rounds=30)
+    print(st.summary())                 # base models + how much the meta-model trusts each one
+    proba = st.predict_proba(X_te)[:, 1]
 """
 
 import inspect
@@ -50,6 +65,7 @@ def _sigmoid(z):
 
 
 def _auc(y, s):
+    """ROC-AUC by the rank-sum identity, ties get the average rank (self-contained copy)."""
     y = np.asarray(y).astype(int)
     s = np.asarray(s, dtype=float)
     n1 = int(y.sum())
@@ -66,7 +82,7 @@ def _auc(y, s):
         while j + 1 < len(ss) and ss[j + 1] == ss[i]:
             j += 1
         if j > i:
-            ranks[order[i:j + 1]] = (i + j + 2) / 2.0
+            ranks[order[i : j + 1]] = (i + j + 2) / 2.0
         i = j + 1
     return float((ranks[y == 1].sum() - n1 * (n1 + 1) / 2.0) / (n1 * n0))
 
@@ -98,7 +114,7 @@ def _default_names(n, prefix="feat"):
 
 
 def _stratified_folds(y, n_folds, seed):
-    
+    """Folds that keep the class ratio (a plain k-fold can hand a fold 0 positives on 16% data)."""
     y = np.asarray(y).astype(int).ravel()
     rng = np.random.RandomState(seed)
     folds = [[] for _ in range(int(n_folds))]
@@ -111,7 +127,7 @@ def _stratified_folds(y, n_folds, seed):
 
 
 def _stratified_split(y, val_size, seed):
-
+    """Index split (fit_idx, val_idx) that keeps the class ratio."""
     y = np.asarray(y).astype(int).ravel()
     n_val = int(round(len(y) * float(val_size)))
     n_val = max(1, min(n_val, len(y) - 1))
@@ -125,16 +141,21 @@ def _stratified_split(y, val_size, seed):
             val.extend(idx[:cut].tolist())
             fit.extend(idx[cut:].tolist())
         else:
-            fit.extend(idx.tolist())                 
-    if not val:                                      
+            fit.extend(idx.tolist())  # a lonely row stays in the fit part
+    if not val:  # never hand an empty eval_set to a base model
         val.append(fit.pop())
     return np.array(sorted(fit), dtype=int), np.array(sorted(val), dtype=int)
 
 
 def _dump_model(model):
-
+    """
+    Serialise a fitted base model to bytes. Some models in this folder (the older tree / logistic files)
+    have no get_state(), but every one of them survives joblib, so pickling is the one mechanism that
+    works for all of them - and for scikit-learn estimators, which have no state protocol either.
+    """
     import io
     import joblib
+
     buf = io.BytesIO()
     joblib.dump(model, buf)
     return buf.getvalue()
@@ -143,11 +164,17 @@ def _dump_model(model):
 def _load_model(blob):
     import io
     import joblib
+
     return joblib.load(io.BytesIO(blob))
 
 
 def _accepts_param(model, name):
-
+    """
+    Does this model's fit() accept that keyword? Not every model does: the DecisionTree in this folder
+    has no eval_set, and a scikit-learn estimator (perfectly usable as a base model here) takes neither
+    eval_set nor feature_names nor early_stopping_rounds. Asking the signature once is safer than
+    catching a TypeError, which would also hide a genuine error inside fit().
+    """
     try:
         params = inspect.signature(model.fit).parameters
     except (TypeError, ValueError):
@@ -156,12 +183,18 @@ def _accepts_param(model, name):
 
 
 def _accepts_eval_set(model):
+    """Kept for readability: the flag that decides whether a base model early-stops on the inner split."""
     return _accepts_param(model, "eval_set")
 
 
 # ======================================================================================= meta model
 class _MetaLogistic:
-
+    """
+    The blender: L2-regularised logistic regression, written from scratch, fitted by Newton-Raphson on a
+    handful of columns (one per base model). Kept inside this file so the stacker works even if the other
+    files change; any object with fit/predict_proba can be passed as `meta_model` instead, including
+    LogisticRegressionScratch from Logisticregression.py.
+    """
 
     def __init__(self, reg_lambda=1.0, standardize=True, max_iter=100, tol=1e-8):
         self.reg_lambda = float(reg_lambda)
@@ -181,7 +214,7 @@ class _MetaLogistic:
         Z = np.column_stack([np.ones(n), (X - self.mean_) / self.scale_])
         beta = np.zeros(d + 1)
         ridge = np.eye(d + 1) * self.reg_lambda
-        ridge[0, 0] = 0.0                                  
+        ridge[0, 0] = 0.0  # never penalise the intercept
         self.history_ = []
         for _ in range(self.max_iter):
             p = _sigmoid(Z @ beta)
@@ -190,7 +223,7 @@ class _MetaLogistic:
             hess = (Z * h[:, None]).T @ Z + ridge
             try:
                 step = np.linalg.solve(hess, grad)
-            except np.linalg.LinAlgError:                   
+            except np.linalg.LinAlgError:  # singular: fall back to a small ridge
                 step = np.linalg.lstsq(hess + 1e-6 * np.eye(d + 1), grad, rcond=None)[0]
             beta = beta - step
             self.history_.append(_wlogloss(y, _sigmoid(Z @ beta), w))
@@ -213,10 +246,18 @@ class _MetaLogistic:
         return (self.predict_proba(X)[:, 1] >= threshold).astype(int)
 
     def get_state(self):
-        return {"params": {"reg_lambda": self.reg_lambda, "standardize": self.standardize,
-                           "max_iter": self.max_iter, "tol": self.tol},
-                "mean": self.mean_, "scale": self.scale_, "coef": self.coef_,
-                "intercept": self.intercept_}
+        return {
+            "params": {
+                "reg_lambda": self.reg_lambda,
+                "standardize": self.standardize,
+                "max_iter": self.max_iter,
+                "tol": self.tol,
+            },
+            "mean": self.mean_,
+            "scale": self.scale_,
+            "coef": self.coef_,
+            "intercept": self.intercept_,
+        }
 
     @classmethod
     def from_state(cls, s):
@@ -229,10 +270,45 @@ class _MetaLogistic:
 
 # =================================================================================== the stacker
 class StackingClassifierScratch:
-   
+    """
+    Stack of classifiers with a learned meta-model.
 
-    def __init__(self, base_models=None, meta_model=None, n_folds=5, inner_val=0.15,
-                 passthrough=False, meta_reg_lambda=1.0, random_state=42, feature_names=None):
+    Parameters
+    ----------
+    base_models   list of (name, factory) or (name, factory, use_val) pairs. `factory()` must return a
+                  FRESH, unfitted model (that is what makes the folds independent). A fitted instance is
+                  also accepted and cloned through its get_state()/from_state(), but factories are
+                  cheaper. use_val=False means "do not hand this model an eval_set" (for the models whose
+                  fit() does not take one) - it is detected from the signature when not given.
+    meta_model    the second-level model; None = the built-in L2 logistic regression (_MetaLogistic).
+                  Anything with fit/predict_proba works.
+    n_folds       folds used to build the out-of-fold meta-features (5 is the usual choice; more folds =
+                  more honest columns but n_folds times the training cost)
+    inner_val     share of each fold's training part held out for the base models' early stopping
+    passthrough   also give the meta-model the original features (standard stacking option; False keeps
+                  the meta-model interpretable - one weight per base model)
+    random_state  seed for the folds and for the base models' factories (passed as random_state when the
+                  factory accepts it)
+
+    Fitted attributes
+    -----------------
+    oof_proba_ (n_train x n_base, the honest meta-features), meta_ (the fitted blender),
+    bases_ (list of base models refitted on the full training set), base_names_,
+    oof_table_ / val_table_ (per base model: OOF and validation ROC-AUC / PR-AUC), meta_weights_,
+    history_ (per-fold curves), best_threshold_, fit_time_
+    """
+
+    def __init__(
+        self,
+        base_models=None,
+        meta_model=None,
+        n_folds=5,
+        inner_val=0.15,
+        passthrough=False,
+        meta_reg_lambda=1.0,
+        random_state=42,
+        feature_names=None,
+    ):
         if base_models is not None and len(list(base_models)) == 0:
             raise ValueError("base_models is empty - a stack needs at least one base model")
         self.base_models = list(base_models) if base_models is not None else None
@@ -246,7 +322,7 @@ class StackingClassifierScratch:
 
     # --------------------------------------------------------------- utilities
     def _specs(self):
-      
+        """Normalise base_models into (name, factory, use_val)."""
         if not self.base_models:
             self.base_models = default_base_models(random_state=self.random_state)
         specs = []
@@ -261,7 +337,7 @@ class StackingClassifierScratch:
         return specs
 
     def _make_base(self, factory, seed_offset=0):
-        
+        """A fresh base model (or a clone of a fitted instance)."""
         if callable(factory):
             try:
                 return factory(random_state=self.random_state + seed_offset)
@@ -284,8 +360,17 @@ class StackingClassifierScratch:
         return m
 
     # ------------------------------------------------------------------- fit
-    def fit(self, X, y, eval_set=None, feature_names=None, early_stopping_rounds=30,
-            sample_weight=None, verbose=False, **_ignored):
+    def fit(
+        self,
+        X,
+        y,
+        eval_set=None,
+        feature_names=None,
+        early_stopping_rounds=30,
+        sample_weight=None,
+        verbose=False,
+        **_ignored,
+    ):
         t0 = time.time()
         X = np.asarray(X, dtype=float)
         if X.ndim != 2:
@@ -296,8 +381,7 @@ class StackingClassifierScratch:
         if len(y) != len(X):
             raise ValueError("X and y have different lengths")
         self.n_features_in_ = X.shape[1]
-        self.feature_names_ = list(feature_names or self.feature_names or
-                                   _default_names(self.n_features_in_))
+        self.feature_names_ = list(feature_names or self.feature_names or _default_names(self.n_features_in_))
         if len(self.feature_names_) != self.n_features_in_:
             raise ValueError("feature_names has the wrong length")
         Zv = yv = None
@@ -309,7 +393,7 @@ class StackingClassifierScratch:
         self.base_names_ = [s[0] for s in specs]
         n_base = len(specs)
         n = len(X)
-        
+        # never ask for more folds than the minority class has rows (a fold with no positives is useless)
         n_folds = max(2, min(self.n_folds, int(np.bincount(y).min())))
         self.n_folds_ = int(n_folds)
 
@@ -322,19 +406,27 @@ class StackingClassifierScratch:
             inner_fit, inner_val = _stratified_split(y[tr], self.inner_val, self.random_state + 100 + k)
             idx_fit, idx_ival = tr[inner_fit], tr[inner_val]
             for j, (name, factory, probe, use_val) in enumerate(specs):
-                m = self._fit_base(factory, X[idx_fit], y[idx_fit],
-                                   eval_set=[(X[idx_ival], y[idx_ival])], use_val=use_val,
-                                   seed_offset=k * 17 + j, feature_names=self.feature_names_)
+                m = self._fit_base(
+                    factory,
+                    X[idx_fit],
+                    y[idx_fit],
+                    eval_set=[(X[idx_ival], y[idx_ival])],
+                    use_val=use_val,
+                    seed_offset=k * 17 + j,
+                    feature_names=self.feature_names_,
+                )
                 oof[fold, j] = m.predict_proba(X[fold])[:, 1]
             aucs = [_auc(y[fold], oof[fold, j]) for j in range(n_base)]
             history["fold"].append(k + 1)
             history["oof_auc"].append(float(np.mean(aucs)))
-          
+            # fold curves: what the fold's held-out rows looked like for the base average
             history["train_logloss"].append(_wlogloss(y[fold], np.clip(oof[fold].mean(axis=1), 1e-6, 1 - 1e-6)))
             history["val_logloss"].append(_wlogloss(y[fold], np.clip(oof[fold].mean(axis=1), 1e-6, 1 - 1e-6)))
             if verbose:
-                print(f"  fold {k + 1}/{n_folds} | mean base OOF AUC {np.mean(aucs):.4f} "
-                      f"({', '.join(f'{s[0]} {a:.3f}' for s, a in zip(specs, aucs))})")
+                print(
+                    f"  fold {k + 1}/{n_folds} | mean base OOF AUC {np.mean(aucs):.4f} "
+                    f"({', '.join(f'{s[0]} {a:.3f}' for s, a in zip(specs, aucs))})"
+                )
         self.oof_proba_ = oof
 
         # ---- 2. the meta-model is trained on those columns only
@@ -350,24 +442,36 @@ class StackingClassifierScratch:
         else:
             self.meta_.fit(meta_X, y)
         n_meta = n_base * (1 + self.passthrough)
-        self.meta_weights_ = np.asarray(getattr(self.meta_, "coef_", np.zeros(n_meta)),
-                                        dtype=float).ravel()[:n_meta]
+        self.meta_weights_ = np.asarray(getattr(self.meta_, "coef_", np.zeros(n_meta)), dtype=float).ravel()[:n_meta]
 
         # ---- 3. refit every base model on the FULL training set (what inference uses)
-        self.bases_ = [self._fit_base(factory, X, y, eval_set=eval_set, use_val=use_val,
-                                      seed_offset=1000 + j, feature_names=self.feature_names_)
-                       for j, (name, factory, probe, use_val) in enumerate(specs)]
+        self.bases_ = [
+            self._fit_base(
+                factory,
+                X,
+                y,
+                eval_set=eval_set,
+                use_val=use_val,
+                seed_offset=1000 + j,
+                feature_names=self.feature_names_,
+            )
+            for j, (name, factory, probe, use_val) in enumerate(specs)
+        ]
 
         # ---- 4. diagnosis: OOF vs validation score of every base model, and of the stack itself
-        self.oof_table_ = [(s[0], _auc(y, oof[:, j]), _average_precision(y, oof[:, j]))
-                           for j, s in enumerate(specs)]
+        self.oof_table_ = [(s[0], _auc(y, oof[:, j]), _average_precision(y, oof[:, j])) for j, s in enumerate(specs)]
         if Zv is not None:
             # use meta_/bases_ directly here: the model is not marked fitted until the end of fit()
             Mv = self._meta_features(Zv)
             p_stack_val = self.meta_.predict_proba(Mv)[:, 1]
-            self.val_table_ = [(s[0], _auc(yv, self.bases_[j].predict_proba(Zv)[:, 1]),
-                                _average_precision(yv, self.bases_[j].predict_proba(Zv)[:, 1]))
-                               for j, s in enumerate(specs)]
+            self.val_table_ = [
+                (
+                    s[0],
+                    _auc(yv, self.bases_[j].predict_proba(Zv)[:, 1]),
+                    _average_precision(yv, self.bases_[j].predict_proba(Zv)[:, 1]),
+                )
+                for j, s in enumerate(specs)
+            ]
             self.val_logloss_ = _wlogloss(yv, p_stack_val)
             self.val_auc_ = _auc(yv, p_stack_val)
             self.val_ap_ = _average_precision(yv, p_stack_val)
@@ -404,8 +508,11 @@ class StackingClassifierScratch:
 
     def decision_function(self, X):
         self._check_fitted()
-        return self.meta_.decision_function(self._meta_features(X)) \
-            if hasattr(self.meta_, "decision_function") else self.predict_proba(X)[:, 1]
+        return (
+            self.meta_.decision_function(self._meta_features(X))
+            if hasattr(self.meta_, "decision_function")
+            else self.predict_proba(X)[:, 1]
+        )
 
     def predict_proba(self, X):
         self._check_fitted()
@@ -426,8 +533,11 @@ class StackingClassifierScratch:
             fp = int(((pred == 1) & (y == 0)).sum())
             fn = int(((pred == 0) & (y == 1)).sum())
             tn = int(((pred == 0) & (y == 0)).sum())
-            s = (2 * tp / max(2 * tp + fp + fn, 1) if metric == "f1"
-                 else 0.5 * (tp / max(tp + fn, 1) + tn / max(tn + fp, 1)))
+            s = (
+                2 * tp / max(2 * tp + fp + fn, 1)
+                if metric == "f1"
+                else 0.5 * (tp / max(tp + fn, 1) + tn / max(tn + fp, 1))
+            )
             if s > best_s:
                 best_t, best_s = float(t), float(s)
         self.best_threshold_, self.best_threshold_score_ = best_t, best_s
@@ -441,52 +551,71 @@ class StackingClassifierScratch:
         return {name: m.predict_proba(X)[:, 1] for name, m in zip(self.base_names_, self.bases_)}
 
     def feature_importance_table(self, top=None):
+        """
+        How much the meta-model trusts each base model: |weight| normalised to sum to 1. This is the
+        table worth putting in the report next to each base model's own score.
+        """
         self._check_fitted()
         rows = [(self.base_names_[j], float(self.feature_importances_[j])) for j in range(len(self.base_names_))]
         rows.sort(key=lambda r: -r[1])
         return rows[:top] if top else rows
 
     def coefficient_table(self, top=None):
-    
+        """Signed meta weights (positive = the model pushes towards 'default'), with the intercept."""
         self._check_fitted()
-        rows = [{"feature": f"p({self.base_names_[j]})", "weight": float(self.meta_weights_[j])}
-                for j in range(len(self.base_names_))]
+        rows = [
+            {"feature": f"p({self.base_names_[j]})", "weight": float(self.meta_weights_[j])}
+            for j in range(len(self.base_names_))
+        ]
         rows.append({"feature": "intercept", "weight": float(getattr(self.meta_, "intercept_", 0.0))})
         rows.sort(key=lambda r: -abs(r["weight"]))
         return rows[:top] if top else rows
 
     def explain(self, X, top=6):
-    
+        """One borrower: what every base model said, the meta-model's own weights, and the answer."""
         self._check_fitted()
         x = np.asarray(X, dtype=float).reshape(1, -1)
         members = {name: float(m.predict_proba(x)[0, 1]) for name, m in zip(self.base_names_, self.bases_)}
         w = self.meta_weights_[: len(self.base_names_)]
         contrib = {name: float(w[j] * members[name]) for j, name in enumerate(self.base_names_)}
-        return {"p_stack": float(self.predict_proba(x)[0, 1]),
-                "member_probas": members,
-                "meta_weights": {name: float(w[j]) for j, name in enumerate(self.base_names_)},
-                "contributions": dict(sorted(contrib.items(), key=lambda kv: -abs(kv[1]))[:top])}
+        return {
+            "p_stack": float(self.predict_proba(x)[0, 1]),
+            "member_probas": members,
+            "meta_weights": {name: float(w[j]) for j, name in enumerate(self.base_names_)},
+            "contributions": dict(sorted(contrib.items(), key=lambda kv: -abs(kv[1]))[:top]),
+        }
 
     def base_model_table(self):
-        
+        """(name, OOF AUC, OOF AP, validation AUC) per base model + the stack's own row."""
         self._check_fitted()
         rows = []
         for j, (name, auc_oof, ap_oof) in enumerate(self.oof_table_):
             val_auc = self.val_table_[j][1] if self.val_table_ else float("nan")
-            rows.append({"model": name, "oof_auc": auc_oof, "oof_ap": ap_oof, "val_auc": val_auc,
-                         "stack_weight": float(self.meta_weights_[j])})
+            rows.append(
+                {
+                    "model": name,
+                    "oof_auc": auc_oof,
+                    "oof_ap": ap_oof,
+                    "val_auc": val_auc,
+                    "stack_weight": float(self.meta_weights_[j]),
+                }
+            )
         rows.sort(key=lambda r: -r["oof_auc"])
         return rows
 
     def summary(self):
         self._check_fitted()
-        lines = [f"Stacking: {len(self.base_names_)} base models, {self.n_folds_} folds, "
-                 f"meta={type(self.meta_).__name__}, passthrough={self.passthrough} "
-                 f"| fit {self.fit_time_:.1f}s"]
+        lines = [
+            f"Stacking: {len(self.base_names_)} base models, {self.n_folds_} folds, "
+            f"meta={type(self.meta_).__name__}, passthrough={self.passthrough} "
+            f"| fit {self.fit_time_:.1f}s"
+        ]
         lines.append(f"  {'base model':<26} {'OOF AUC':>8} {'OOF AP':>8} {'val AUC':>8} {'meta w':>8}")
         for r in self.base_model_table():
-            lines.append(f"  {r['model']:<26} {r['oof_auc']:>8.4f} {r['oof_ap']:>8.4f} "
-                         f"{r['val_auc']:>8.4f} {r['stack_weight']:>8.3f}")
+            lines.append(
+                f"  {r['model']:<26} {r['oof_auc']:>8.4f} {r['oof_ap']:>8.4f} "
+                f"{r['val_auc']:>8.4f} {r['stack_weight']:>8.3f}"
+            )
         if self.val_auc_ is not None:
             lines.append(f"  {'STACK (this model)':<26} {'':>8} {'':>8} {self.val_auc_:>8.4f}")
         return "\n".join(lines)
@@ -504,19 +633,29 @@ class StackingClassifierScratch:
     # ----------------------------------------------------------- save / load
     def get_state(self):
         self._check_fitted()
-        return {"cls": "StackingClassifierScratch",
-                "params": dict(n_folds=self.n_folds, inner_val=self.inner_val,
-                               passthrough=self.passthrough, meta_reg_lambda=self.meta_reg_lambda,
-                               random_state=self.random_state),
-                "base_names": self.base_names_,
-                "bases": [_dump_model(m) for m in self.bases_],
-                "base_classes": [type(m).__name__ for m in self.bases_],
-                "meta": _dump_model(self.meta_),
-                "meta_coef": self.meta_weights_, "feature_names": self.feature_names_,
-                "oof_proba": self.oof_proba_, "oof_table": self.oof_table_, "val_table": self.val_table_,
-                "importances": self.feature_importances_, "history": self.history_,
-                "best_threshold": float(self.best_threshold_),
-                "n_features_in_": self.n_features_in_}
+        return {
+            "cls": "StackingClassifierScratch",
+            "params": dict(
+                n_folds=self.n_folds,
+                inner_val=self.inner_val,
+                passthrough=self.passthrough,
+                meta_reg_lambda=self.meta_reg_lambda,
+                random_state=self.random_state,
+            ),
+            "base_names": self.base_names_,
+            "bases": [_dump_model(m) for m in self.bases_],
+            "base_classes": [type(m).__name__ for m in self.bases_],
+            "meta": _dump_model(self.meta_),
+            "meta_coef": self.meta_weights_,
+            "feature_names": self.feature_names_,
+            "oof_proba": self.oof_proba_,
+            "oof_table": self.oof_table_,
+            "val_table": self.val_table_,
+            "importances": self.feature_importances_,
+            "history": self.history_,
+            "best_threshold": float(self.best_threshold_),
+            "n_features_in_": self.n_features_in_,
+        }
 
     @classmethod
     def from_state(cls, s):
@@ -540,15 +679,26 @@ class StackingClassifierScratch:
 
     def save(self, path):
         import joblib
+
         joblib.dump({"model": "StackingClassifierScratch", "state": self.get_state()}, path)
 
     @classmethod
     def load(cls, path):
         import joblib
+
         return cls.from_state(joblib.load(path)["state"])
 
 
 def default_base_models(random_state=42, include_slow=False):
+    """
+    A sensible default stack: models that are (a) fast enough to train n_folds + 1 times and (b) good at
+    different things - a linear model, two different neural-ish learners, a kernel model, a distance
+    model and a probabilistic one. With include_slow=True the tree ensembles and the EBM are added too
+    (better, but the fit then takes minutes instead of ~40 seconds).
+
+    Each entry is (name, factory, use_val): the flag says whether that model's fit() accepts an
+    eval_set (the DecisionTree and the Naive Bayes in this folder do not).
+    """
     from Logisticregression import LogisticRegressionScratch
     from Perceptron import PerceptronScratch
     from NaiveBayes import NaiveBayesScratch
@@ -556,33 +706,80 @@ def default_base_models(random_state=42, include_slow=False):
     from KNN import KNNClassifierScratch
 
     models = [
-        ("Logistic Regression", lambda random_state=random_state: LogisticRegressionScratch(
-            learning_rate=0.5, n_iterations=500, reg_lambda=1.0), True),   # no seed: fully deterministic
-        ("Perceptron (averaged)", lambda random_state=random_state: PerceptronScratch(
-            variant="averaged", learning_rate=0.1, n_epochs=40, random_state=random_state), True),
-        ("Naive Bayes", lambda random_state=random_state: NaiveBayesScratch(
-            kind="categorical", n_bins=10), False),
-        ("SVC (linear)", lambda random_state=random_state: SVCScratch(
-            C=1.0, kernel="linear", solver="primal", n_iterations=1500,
-            scale_pos_weight="balanced", random_state=random_state), True),
-        ("k-NN", lambda random_state=random_state: KNNClassifierScratch(
-            n_neighbors=25, tune_k="auto", random_state=random_state), True),
+        (
+            "Logistic Regression",
+            lambda random_state=random_state: LogisticRegressionScratch(
+                learning_rate=0.5, n_iterations=500, reg_lambda=1.0
+            ),
+            True,
+        ),  # no seed: fully deterministic
+        (
+            "Perceptron (averaged)",
+            lambda random_state=random_state: PerceptronScratch(
+                variant="averaged", learning_rate=0.1, n_epochs=40, random_state=random_state
+            ),
+            True,
+        ),
+        ("Naive Bayes", lambda random_state=random_state: NaiveBayesScratch(kind="categorical", n_bins=10), False),
+        (
+            "SVC (linear)",
+            lambda random_state=random_state: SVCScratch(
+                C=1.0,
+                kernel="linear",
+                solver="primal",
+                n_iterations=1500,
+                scale_pos_weight="balanced",
+                random_state=random_state,
+            ),
+            True,
+        ),
+        (
+            "k-NN",
+            lambda random_state=random_state: KNNClassifierScratch(
+                n_neighbors=25, tune_k="auto", random_state=random_state
+            ),
+            True,
+        ),
     ]
     if include_slow:
         from RandomForest import RandomForestClassifierScratch
         from GradientBoosting import GradientBoostingClassifierScratch
         from XGB import XGBClassifierScratch
         from ExplainableBoosting import ExplainableBoostingScratch
+
         models += [
-            ("Random Forest", lambda random_state=random_state: RandomForestClassifierScratch(
-                n_estimators=100, max_depth=8, min_samples_leaf=10, random_state=random_state), False),
-            ("Gradient Boosting", lambda random_state=random_state: GradientBoostingClassifierScratch(
-                n_estimators=300, learning_rate=0.05, max_depth=3, subsample=0.8,
-                random_state=random_state), True),
-            ("XGBoost", lambda random_state=random_state: XGBClassifierScratch(
-                n_estimators=300, learning_rate=0.05, max_depth=3, subsample=0.8,
-                colsample_bytree=0.8, random_state=random_state), True),
-            ("EBM", lambda random_state=random_state: ExplainableBoostingScratch(
-                n_rounds=800, learning_rate=0.02, max_bins=16, n_outer_bags=8, random_state=random_state), True),
+            (
+                "Random Forest",
+                lambda random_state=random_state: RandomForestClassifierScratch(
+                    n_estimators=100, max_depth=8, min_samples_leaf=10, random_state=random_state
+                ),
+                False,
+            ),
+            (
+                "Gradient Boosting",
+                lambda random_state=random_state: GradientBoostingClassifierScratch(
+                    n_estimators=300, learning_rate=0.05, max_depth=3, subsample=0.8, random_state=random_state
+                ),
+                True,
+            ),
+            (
+                "XGBoost",
+                lambda random_state=random_state: XGBClassifierScratch(
+                    n_estimators=300,
+                    learning_rate=0.05,
+                    max_depth=3,
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    random_state=random_state,
+                ),
+                True,
+            ),
+            (
+                "EBM",
+                lambda random_state=random_state: ExplainableBoostingScratch(
+                    n_rounds=800, learning_rate=0.02, max_bins=16, n_outer_bags=8, random_state=random_state
+                ),
+                True,
+            ),
         ]
     return models

@@ -1,0 +1,7 @@
+{
+  "check": "Single-layer perceptron vs LogisticRegression (same loss)",
+  "difference": 0.00885179478830096,
+  "AUC scratch": 0.7041446611920098,
+  "AUC sklearn": 0.7050849182363057,
+  "the difference is": "max |dcoef|"
+}

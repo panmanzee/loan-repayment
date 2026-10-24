@@ -1,0 +1,7 @@
+{
+  "check": "Logistic Regression vs sklearn LogisticRegression",
+  "difference": 0.4693758320273689,
+  "AUC scratch": 0.7067313856580273,
+  "AUC sklearn": 0.7043807430472876,
+  "the difference is": "max |dcoef|"
+}

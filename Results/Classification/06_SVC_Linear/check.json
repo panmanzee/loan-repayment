@@ -1,0 +1,7 @@
+{
+  "check": "SVC (linear) vs sklearn LinearSVC (same hinge + balanced weights)",
+  "difference": 0.6049060542797495,
+  "AUC scratch": 0.7006461723194025,
+  "AUC sklearn": 0.688357704714514,
+  "the difference is": "share of same flags"
+}

@@ -6,6 +6,7 @@ Same model as LinearRegression.py but X has many feature columns. Adds optional 
 Scale X (StandardScalerScratch) before using fit_gradient_descent; fit_normal_equation needs no scaling.
 Run/import from this folder so `LinearRegression` resolves.
 """
+
 import numpy as np
 
 from LinearRegression import LinearRegressionScratch
@@ -39,7 +40,7 @@ class MultipleRegressionScratch(LinearRegressionScratch):
             grad = Xb.T @ error / m
             grad[1:] += (self.l2 / m) * self.theta[1:]
             self.theta -= self.lr * grad
-            self.loss_history.append(np.mean(error ** 2))
+            self.loss_history.append(np.mean(error**2))
         return self
 
     def standardized_importance(self, X):

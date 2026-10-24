@@ -1,0 +1,7 @@
+{
+  "check": "Averaged perceptron vs SGDClassifier(perceptron, average)",
+  "difference": NaN,
+  "AUC scratch": 0.6912741297025572,
+  "AUC sklearn": 0.6923955185151265,
+  "the difference is": "AUC only"
+}

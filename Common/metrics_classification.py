@@ -1,3 +1,7 @@
+"""
+Classification metrics written from scratch (log loss, confusion matrix, precision / recall / F1,
+ROC-AUC, PR-AUC, ROC and precision-recall curves, threshold search). Every model is measured with these.
+"""
 
 import numpy as np
 
@@ -86,7 +90,7 @@ def _tie_aware_ranks(scores):
         j = i
         while j + 1 < n and s_sorted[j + 1] == s_sorted[i]:
             j += 1
-        ranks[order[i:j + 1]] = 0.5 * (i + j) + 1.0
+        ranks[order[i : j + 1]] = 0.5 * (i + j) + 1.0
         i = j + 1
     return ranks
 
@@ -195,7 +199,10 @@ def classification_metrics(y_true, proba, threshold=0.5, metric="f1"):
         "pr_auc": average_precision(y_true, proba),
         "threshold": float(threshold),
         "threshold_auto_selected": bool(auto),
-        "tn": int(cm[0, 0]), "fp": int(cm[0, 1]), "fn": int(cm[1, 0]), "tp": int(cm[1, 1]),
+        "tn": int(cm[0, 0]),
+        "fp": int(cm[0, 1]),
+        "fn": int(cm[1, 0]),
+        "tp": int(cm[1, 1]),
     }
 
 
@@ -220,6 +227,7 @@ def best_threshold(y_true, proba, metric="f1"):
         if score > best_score:
             best_score, best_thr = score, float(thr)
     return best_thr, best_score
+
 
 def evaluate_on_test(y_val, proba_val, y_test, proba_test, metric="f1", reference_threshold=0.5):
     """

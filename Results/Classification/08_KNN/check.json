@@ -1,0 +1,7 @@
+{
+  "check": "k-NN vs sklearn KNeighborsClassifier (k=41, distance weights)",
+  "difference": 0.3196437390887655,
+  "AUC scratch": 0.6500554588841062,
+  "AUC sklearn": 0.6527887169154685,
+  "the difference is": "max |dP|"
+}

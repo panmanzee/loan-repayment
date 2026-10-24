@@ -1,0 +1,7 @@
+{
+  "check": "XGBoost vs real xgboost (same settings)",
+  "difference": 0.3101092916456655,
+  "AUC scratch": 0.6844908467401369,
+  "AUC sklearn": 0.6721820272511728,
+  "the difference is": "max |dP|"
+}

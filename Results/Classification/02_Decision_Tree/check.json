@@ -1,0 +1,7 @@
+{
+  "check": "Decision Tree vs sklearn DecisionTreeClassifier (identical predictions)",
+  "difference": 0.11899791231732781,
+  "AUC scratch": 0.632484659767378,
+  "AUC sklearn": 0.635068331450784,
+  "the difference is": "1 - share identical"
+}

@@ -1,0 +1,7 @@
+{
+  "check": "EBM vs interpret.ExplainableBoostingClassifier",
+  "difference": 0.9499679943897765,
+  "AUC scratch": 0.7052721555698018,
+  "AUC sklearn": 0.698576385708907,
+  "the difference is": "probability correlation"
+}

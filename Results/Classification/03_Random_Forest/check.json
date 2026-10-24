@@ -1,0 +1,7 @@
+{
+  "check": "Random Forest vs sklearn RandomForestClassifier",
+  "difference": 0.240011105396022,
+  "AUC scratch": 0.6883699158449593,
+  "AUC sklearn": 0.6886548422220187,
+  "the difference is": "max |dP|"
+}

@@ -27,6 +27,7 @@ it learns feature interactions and non-linear effects automatically.
 Hyper-parameters: n_estimators (M), learning_rate (step size), max_depth (weak-learner size), subsample
 (row fraction per tree: adds randomness, reduces over-fitting), min_samples_leaf.
 """
+
 import numpy as np
 
 
@@ -50,7 +51,7 @@ class RegressionTreeScratch:
         return self
 
     def _new_node(self, value):
-        self.feature.append(-1)       # -1 = leaf
+        self.feature.append(-1)  # -1 = leaf
         self.threshold.append(0.0)
         self.left.append(-1)
         self.right.append(-1)
@@ -61,7 +62,7 @@ class RegressionTreeScratch:
         """Return (feature, threshold, gain) of the best split, or (None, None, 0) if none is allowed."""
         n = len(y)
         total = y.sum()
-        parent_term = total ** 2 / n                  # SSE(parent) = sum(y^2) - total^2/n
+        parent_term = total**2 / n  # SSE(parent) = sum(y^2) - total^2/n
         left_n = np.arange(1, n)
         right_n = n - left_n
         size_ok = (left_n >= self.min_samples_leaf) & (right_n >= self.min_samples_leaf)
@@ -72,8 +73,8 @@ class RegressionTreeScratch:
             left_sum = np.cumsum(ys)[:-1]
             right_sum = total - left_sum
             # maximising left_sum^2/nL + right_sum^2/nR  <=>  minimising SSE(left) + SSE(right)
-            score = left_sum ** 2 / left_n + right_sum ** 2 / right_n
-            allowed = size_ok & (xs[1:] != xs[:-1])   # can only cut between two different values
+            score = left_sum**2 / left_n + right_sum**2 / right_n
+            allowed = size_ok & (xs[1:] != xs[:-1])  # can only cut between two different values
             if not allowed.any():
                 continue
             score = np.where(allowed, score, -np.inf)
@@ -114,8 +115,9 @@ class RegressionTreeScratch:
 class GradientBoostingRegressorScratch:
     """Stochastic Gradient Boosting Regressor (squared-error loss). See the module docstring."""
 
-    def __init__(self, n_estimators=200, learning_rate=0.1, max_depth=3, subsample=1.0,
-                 min_samples_leaf=5, random_state=42):
+    def __init__(
+        self, n_estimators=200, learning_rate=0.1, max_depth=3, subsample=1.0, min_samples_leaf=5, random_state=42
+    ):
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.max_depth = max_depth
@@ -124,7 +126,7 @@ class GradientBoostingRegressorScratch:
         self.random_state = random_state
         self.trees = []
         self.initial_pred = None
-        self.train_loss = []              # training MSE after each boosting round (the loss curve)
+        self.train_loss = []  # training MSE after each boosting round (the loss curve)
 
     def fit(self, X, y):
         rng = np.random.RandomState(self.random_state)

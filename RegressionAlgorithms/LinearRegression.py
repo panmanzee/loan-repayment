@@ -4,6 +4,7 @@ Linear Regression (from scratch) - Regression task (target: int.rate)
 Simple regression = 1 feature (e.g. fico). Fitting methods: Normal Equation and Gradient Descent.
 Metrics (loss, R2, RMSE) live in Common/metrics.py.
 """
+
 import numpy as np
 
 
@@ -13,6 +14,7 @@ class LinearRegressionScratch:
     Supports Simple (1 feature) and Multiple (all features).
     Two fitting methods: Normal Equation and Gradient Descent.
     """
+
     def __init__(self, learning_rate=0.1, n_iterations=2000):
         self.lr = learning_rate
         self.n_iter = n_iterations
@@ -43,7 +45,7 @@ class LinearRegressionScratch:
         for _ in range(self.n_iter):
             error = Xb @ self.theta - y
             self.theta -= (self.lr / m) * (Xb.T @ error)
-            self.loss_history.append(np.mean(error ** 2))
+            self.loss_history.append(np.mean(error**2))
         return self
 
     def predict(self, X):

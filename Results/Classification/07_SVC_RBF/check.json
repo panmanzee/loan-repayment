@@ -1,0 +1,7 @@
+{
+  "check": "SVC (rbf) vs sklearn SVC (rbf, balanced)",
+  "difference": NaN,
+  "AUC scratch": 0.660495975414924,
+  "AUC sklearn": 0.6752327746741155,
+  "the difference is": "AUC only"
+}

@@ -6,6 +6,22 @@
 โปรเจกต์มี 2 งานแยกกัน: **งาน A Regression** (ทำนายอัตราดอกเบี้ย) และ **งาน B Classification** (ทำนายการผิดนัดชำระ)
 ทุกงานแบ่งข้อมูลเป็น train / validation / test, เลือก threshold และ hyper-parameter จาก validation เท่านั้น (ไม่แตะ test), และวัดซ้ำหลายรอบเป็น mean ± SD
 
+## เปิดดูผลทีละโมเดล
+
+ทุกโมเดลมี notebook ของตัวเองใน `Notebooks/` (เปิดบน GitHub ได้เลย ผลรันและกราฟฝังอยู่ในไฟล์แล้ว)
+แต่ละ notebook มี 3 ช่องโค้ด: **1. Setup and data** (import + แบ่งข้อมูล) → **2. Model** (เทรนโมเดลที่เขียนเอง + ตัวเทียบจาก scikit-learn) → **3. Results** (ตัวชี้วัด, กราฟ, บันทึกโมเดล)
+
+| งาน A: Regression | งาน B: Classification |
+|---|---|
+| [00 Data analysis](Notebooks/Regression/00_Data_Analysis.ipynb) | [00 Data analysis](Notebooks/Classification/00_Data_Analysis.ipynb) |
+| [01 Simple Linear](Notebooks/Regression/01_Simple_Linear_Regression.ipynb) | [01 Logistic Regression](Notebooks/Classification/01_Logistic_Regression.ipynb) · [02 Decision Tree](Notebooks/Classification/02_Decision_Tree.ipynb) · [03 Random Forest](Notebooks/Classification/03_Random_Forest.ipynb) |
+| [02 Multiple Linear](Notebooks/Regression/02_Multiple_Linear_Regression.ipynb) | [04 Gradient Boosting](Notebooks/Classification/04_Gradient_Boosting.ipynb) · [05 XGBoost](Notebooks/Classification/05_XGBoost.ipynb) · [06 SVC linear](Notebooks/Classification/06_SVC_Linear.ipynb) · [07 SVC rbf](Notebooks/Classification/07_SVC_RBF.ipynb) |
+| [03 Polynomial](Notebooks/Regression/03_Polynomial_Regression.ipynb) | [08 k-NN](Notebooks/Classification/08_KNN.ipynb) · [09 Naive Bayes](Notebooks/Classification/09_Naive_Bayes.ipynb) · [10 Perceptron](Notebooks/Classification/10_Perceptron.ipynb) · [11 Single-Layer Perceptron](Notebooks/Classification/11_Single_Layer_Perceptron.ipynb) |
+| [04 Gradient Boosting (better model)](Notebooks/Regression/04_Gradient_Boosting_Regressor.ipynb) | [12 MLP](Notebooks/Classification/12_MLP.ipynb) · [13 EBM](Notebooks/Classification/13_EBM.ipynb) · [14 Stacking](Notebooks/Classification/14_Stacking.ipynb) · [15 Blend EBM + MLP (better model)](Notebooks/Classification/15_Blend_EBM_MLP.ipynb) |
+| [05 Model comparison](Notebooks/Regression/05_Model_Comparison.ipynb) | [16 PCA / LDA](Notebooks/Classification/16_PCA_LDA.ipynb) · [17 k-Means / Agglomerative](Notebooks/Classification/17_KMeans_Agglomerative.ipynb) · [18 Model comparison](Notebooks/Classification/18_Model_Comparison.ipynb) |
+
+กราฟของแต่ละโมเดลอยู่ที่ `Images/<งาน>/<ชื่อ notebook>/` · ตาราง CSV ที่ `Results/<งาน>/<ชื่อ notebook>/` · โมเดลที่เทรนแล้วที่ `TrainedModels/<งาน>/<ชื่อ notebook>.joblib`
+
 ---
 
 # งาน A: Regression (เป้าหมาย `int.rate`)
@@ -24,12 +40,11 @@
 
 **สรุป:** Gradient Boosting ดีที่สุดทุกตัวชี้วัด และชนะ Multiple Linear ครบทั้ง 10 splits (+0.105 R²) เป็นผลที่แน่นอน ไม่ใช่ความบังเอิญ
 
-| หัวข้อ | ไฟล์ผลลัพธ์ |
+| หัวข้อ | ดูที่ |
 |---|---|
-| Loss / Loss curve | `Results/02_Loss/regression_*` |
-| Performance curve | `Results/07_Performance_Curve/regression_*` |
-| R², benchmark, batch runs | `Results/08_R_Square/regression_*` |
-| Feature importance, residuals, เทียบ scikit-learn | `Results/09_Others/regression_*` |
+| Loss / loss curve, actual vs predicted, residuals, เทียบ scikit-learn | notebook ของแต่ละโมเดล (`Images/Regression/0X_*/`) |
+| Performance curve, feature importance | [04 Gradient Boosting](Notebooks/Regression/04_Gradient_Boosting_Regressor.ipynb) |
+| R² benchmark, 5-fold CV, batch runs, กราฟรวม 4 โมเดล | [05 Model comparison](Notebooks/Regression/05_Model_Comparison.ipynb) (`Images/Regression/05_Model_Comparison/`) |
 
 ---
 
@@ -78,7 +93,7 @@
 | Youden (sensitivity+specificity−1) | 76.0% | 0.228 | 53.8% | 1.43× | 73 |
 | precision ≥ 1.5× base | 55.8% | 0.267 | 33.4% | 1.67× | 135 |
 
-**บทเรียน:** กฎ f2 จับคนเบี้ยวได้มากสุด แต่แลกมาด้วยการสั่งตรวจ 76% ของผู้สมัครทั้งหมด ทำให้ enrichment เหลือ 1.19× (flag แทบไม่ให้ข้อมูล) จึงเลือก **f1.5** เป็นค่าตั้งต้น — เปลี่ยนกฎได้ที่ตัวแปรเดียว `FLAG_RULE` ท้ายหัวไฟล์ `run_classification.py`
+**บทเรียน:** กฎ f2 จับคนเบี้ยวได้มากสุด แต่แลกมาด้วยการสั่งตรวจ 76% ของผู้สมัครทั้งหมด ทำให้ enrichment เหลือ 1.19× (flag แทบไม่ให้ข้อมูล) จึงเลือก **f1.5** เป็นค่าตั้งต้น — เปลี่ยนกฎได้ที่ตัวแปรเดียว `FLAG_RULE` ใน `Common/evaluation_classification.py`
 
 ### 3) คุณค่าจริงของการใช้โมเดล: จัดคิวตรวจ (recall@top-k ของ Blend)
 
@@ -134,18 +149,14 @@
 | | **Blend EBM + MLP** | งานที่ต้องการทั้งคะแนนนำและคำอธิบาย — EBM อธิบายรายคน + MLP ให้คะแนน |
 | ลดมิติ (ไม่มี/threshold) | PCA / KernelPCA | ลดมิติก่อนใช้ k-NN/SVC, ทำ visualization, กำจัดฟีเจอร์ซ้ำ (`Dimensionreduction.py`) |
 | | LDA | ลดมิติเมื่อมี label (ต้องการทิศที่แยกคลาส) — ในงานนี้แกนเดียวพอสำหรับ SVC |
-| | Feature selection | คัดฟีเจอร์จาก importance (ในงานนี้ 27 → 23 ตัว) |
+| | Feature selection | คัดฟีเจอร์จาก importance (ในงานนี้ 27 → 21 ตัว, เลือกจาก validation ROC-AUC) |
 | ไม่มี label | k-Means / Agglomerative | แบ่งกลุ่มลูกค้า/segment, profiling (`KMeanandAgglomerative.py`) — ในงานนี้ k=6 silhouette 0.153, ARI กับคนเบี้ยวจริงแค่ 0.023 (โครงสร้างเรขาคณิตไม่ตรงกับความเสี่ยง จึงใช้เพื่อแบ่งกลุ่มเท่านั้น ไม่ใช่ทำนาย) |
 
-| หัวข้อ | ไฟล์ผลลัพธ์ |
+| หัวข้อ | ดูที่ |
 |---|---|
-| Loss, loss curve (รายโมเดล + รวมทุกโมเดลในกราฟเดียว) | `Results/02_Loss/classification_*` |
-| Confusion matrix (15 โมเดล + ตารางตัวนับ) | `Results/03_Confusion_Matrix/classification_*` |
-| Accuracy, balanced accuracy | `Results/04_Accuracy/classification_*` |
-| Precision, Sensitivity, Specificity, F1 | `Results/05_Precision_Recall_F1/classification_*` |
-| ROC & AUC, PR-AUC, ROC/PR curves | `Results/06_ROC_AUC/classification_*` |
-| Performance curve (ทุกโมเดลที่วัดแบบ stage ได้) | `Results/07_Performance_Curve/classification_*` |
-| **กฎ threshold (rule ladder), recall@top-k / lift, benchmark + CV, feature importance, EBM shape functions, เทียบ scikit-learn, batch runs** | `Results/09_Others/classification_*` |
+| Loss curve, performance curve, confusion matrix, ROC/PR curve, feature importance, เทียบ scikit-learn **รายโมเดล** | notebook ของแต่ละโมเดล 01-15 (`Images/Classification/<ชื่อ notebook>/`) |
+| EBM shape functions, Naive Bayes densities, perceptron variants, SVC weights, permutation importance | ใน notebook ของโมเดลนั้น (13, 09, 10, 06, 05) |
+| กราฟรวม 15 โมเดล: loss, accuracy, precision/recall/F1, ROC-AUC, confusion matrices, กฎ threshold, recall@top-k, CV, batch runs, feature importance agreement | [18 Model comparison](Notebooks/Classification/18_Model_Comparison.ipynb) (`Images/Classification/18_Model_Comparison/`) |
 
 ---
 
@@ -153,18 +164,21 @@
 
 | ชื่อ | คืออะไร |
 |---|---|
-| `Common/` | โหลด/แบ่งข้อมูล, ตัววัดผล, ฟังก์ชันวาดกราฟ |
-| `RegressionAlgorithms/` | โมเดลงาน A |
-| `ClassificationAlgorithms/` | โมเดลงาน B |
-| `run_regression.py` | รันงาน A ทั้งหมด (~15 นาที) |
-| `run_classification.py` | รันงาน B ทั้งหมด 17 ส่วน / 15 โมเดล (~30 นาที · ใช้ `CLF_QUICK=1` เพื่อรันเร็ว ~8 นาทีตอนแก้โค้ด) |
-| `Results/` | กราฟและตาราง แยกตามหัวข้อ `01`-`09` |
-| `TrainedModels/` | โมเดลที่เทรนแล้ว (`.joblib`) |
+| `Notebooks/Regression/`, `Notebooks/Classification/` | notebook ละ 1 โมเดล + data analysis + model comparison |
+| `RegressionAlgorithms/`, `ClassificationAlgorithms/` | โค้ดโมเดลที่เขียนเองด้วย NumPy (คำอธิบายกลไกอยู่ที่หัวไฟล์) |
+| `Common/` | โค้ดที่ทุก notebook ใช้ร่วมกัน: `project.py` (path + แบ่งข้อมูล), `data*.py` (ฟีเจอร์), `metrics*.py` (ตัวชี้วัด), `evaluation_classification.py` (กฎ threshold), `model_zoo.py` (ค่า hyper-parameter ที่ใช้ซ้ำใน CV/batch runs), `report_*.py` + `plots.py` (กราฟ) |
+| `Images/` | กราฟ PNG แยกโฟลเดอร์ตาม notebook |
+| `Results/` | ตาราง CSV แยกโฟลเดอร์ตาม notebook |
+| `TrainedModels/` | โมเดลที่เทรนแล้ว (`.joblib`) แยกตามงาน |
+| `run_all_notebooks.py` | รันทุก notebook ตามลำดับแล้วบันทึกผลลงไฟล์ |
 
 ## วิธีรัน
 
 ```bash
-pip install numpy pandas matplotlib scikit-learn joblib
-python run_regression.py
-python run_classification.py
+pip install -r requirements.txt
+python run_all_notebooks.py                 # ทั้งหมด (~1.5 ชม. ส่วนใหญ่คือ CV + batch runs ใน Model comparison)
+python run_all_notebooks.py Regression      # เฉพาะงาน A
+python run_all_notebooks.py 05_XGBoost      # notebook เดียว
 ```
+
+หรือเปิด notebook ใน Jupyter / VS Code แล้วกด Run All (ให้รัน notebook ของโมเดลก่อน Model comparison เพราะ comparison อ่านผลของโมเดลแต่ละตัว)

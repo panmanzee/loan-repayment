@@ -1,0 +1,16 @@
+[
+  {
+    "check": "Naive Bayes (categorical) vs CategoricalNB",
+    "difference": 1.7708057242771247e-14,
+    "AUC scratch": 0.6756194604715532,
+    "AUC sklearn": 0.6756194604715532,
+    "the difference is": "max |dP|"
+  },
+  {
+    "check": "Naive Bayes (Gaussian) vs GaussianNB",
+    "difference": 1.4099832412739488e-14,
+    "AUC scratch": 0.6749193556593501,
+    "AUC sklearn": 0.6749193556593501,
+    "the difference is": "max |dP|"
+  }
+]

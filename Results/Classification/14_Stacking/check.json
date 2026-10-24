@@ -1,0 +1,7 @@
+{
+  "check": "Stacking vs sklearn StackingClassifier",
+  "difference": NaN,
+  "AUC scratch": 0.7024941233934732,
+  "AUC sklearn": 0.7025022641471034,
+  "the difference is": "AUC only"
+}

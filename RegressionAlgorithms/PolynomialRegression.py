@@ -4,6 +4,7 @@ Polynomial Regression (from scratch) - Regression task (target: int.rate)
 Expands features (original + squared + pairwise products), then fits linear regression by gradient descent.
 Needs `Common/` and this folder on sys.path (run_regression.py does this).
 """
+
 import numpy as np
 from data import StandardScalerScratch  # Common/data.py
 from LinearRegression import LinearRegressionScratch
@@ -29,7 +30,7 @@ class PolynomialRegressionScratch:
     def _expand(self, X):
         """[x_i] + [x_i^2] + [x_i * x_j for i < j]"""
         n = X.shape[1]
-        squares = X ** 2
+        squares = X**2
         products = [(X[:, i] * X[:, j]).reshape(-1, 1) for i in range(n) for j in range(i + 1, n)]
         return np.hstack([X, squares] + products)
 
