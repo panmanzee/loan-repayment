@@ -2,11 +2,10 @@
 Project-wide paths and the fixed data splits used by every notebook.
 
 Every notebook starts with:
-    from project import *            (after adding Common/ to sys.path)
-and gets the same data, the same split (seed 42) and the folders where its outputs go:
-    Images/<Task>/<Notebook name>/        charts (PNG)
-    Results/<Task>/<Notebook name>/       tables (CSV) + predictions for the comparison notebook
-    TrainedModels/<Task>/<Notebook name>.joblib
+    from project import *            (after adding Notebooks/src/Common/ to sys.path)
+and gets the same data, the same split (seed 42) and the folder where its outputs go:
+    Results/<Task>/<Notebook name>/       charts (PNG) + tables (CSV) + predictions for the comparison notebook
+                                          + model.joblib (trained model, not stored on GitHub)
 """
 
 import json
@@ -16,9 +15,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Notebooks/src
+ROOT = os.path.dirname(os.path.dirname(SRC))  # repository root
 for _folder in ("Common", "RegressionAlgorithms", "ClassificationAlgorithms"):
-    _path = os.path.join(ROOT, _folder)
+    _path = os.path.join(SRC, _folder)
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -29,15 +29,13 @@ SEED = 42
 
 
 class Outputs:
-    """Where one notebook writes its charts, tables and trained model."""
+    """Where one notebook writes its charts, tables and trained model (all in Results/<task>/<name>/)."""
 
     def __init__(self, task, name):
         self.task, self.name = task, name
-        self.images = os.path.join(ROOT, "Images", task, name)
         self.results = os.path.join(ROOT, "Results", task, name)
-        self.models = os.path.join(ROOT, "TrainedModels", task)
-        for folder in (self.images, self.results, self.models):
-            os.makedirs(folder, exist_ok=True)
+        self.images = self.models = self.results
+        os.makedirs(self.results, exist_ok=True)
 
     def image(self, filename):
         return os.path.join(self.images, filename)
@@ -46,7 +44,7 @@ class Outputs:
         return os.path.join(self.results, filename)
 
     def model(self):
-        return os.path.join(self.models, f"{self.name}.joblib")
+        return os.path.join(self.models, "model.joblib")
 
     def save_json(self, filename, obj):
         with open(self.table(filename), "w", encoding="utf-8") as f:

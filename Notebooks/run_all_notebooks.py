@@ -1,10 +1,10 @@
 """
 Run every notebook in order and save the outputs inside the .ipynb files (so GitHub shows the results).
 
-    python run_all_notebooks.py                      # everything (the two comparison notebooks take the longest)
-    python run_all_notebooks.py Regression           # one task only
-    python run_all_notebooks.py 05_XGBoost           # any notebook whose name contains the text
-    python run_all_notebooks.py --jobs 3             # run the independent model notebooks in parallel
+    python Notebooks/run_all_notebooks.py                      # everything (the two comparison notebooks take the longest)
+    python Notebooks/run_all_notebooks.py Regression           # one task only
+    python Notebooks/run_all_notebooks.py 05_XGBoost           # any notebook whose name contains the text
+    python Notebooks/run_all_notebooks.py --jobs 3             # run the independent model notebooks in parallel
 
 The model notebooks (01, 02, ...) must run before a task's Model_Comparison notebook, which reads their results.
 """
@@ -18,7 +18,7 @@ from concurrent.futures import ProcessPoolExecutor
 import nbformat
 from nbconvert.preprocessors import CellExecutionError, ExecutePreprocessor
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repository root
 
 
 def run(path):

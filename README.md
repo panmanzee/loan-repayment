@@ -1,184 +1,43 @@
-# Loan Repayment: ML Project
+# Loan Repayment: Machine Learning Project
 
-ข้อมูล `DataSet/loan_data.csv` (9,578 สัญญากู้ยืม, 14 คอลัมน์) โมเดลทุกตัวเขียนเองด้วย NumPy แล้วเทียบกับ scikit-learn
+ทำนาย 2 อย่างจากข้อมูลสินเชื่อ LendingClub (9,578 สัญญา):
+
+- **งาน A: Regression**: ทายอัตราดอกเบี้ย (`int.rate`)
+- **งาน B: Classification**: ทายว่าผู้กู้จะผิดนัดชำระหรือไม่ (`not.fully.paid`)
+
+โมเดลทุกตัวเขียนเองด้วย NumPy และเทียบผลกับ scikit-learn
 ผู้จัดทำ: panmanzee, pmipheta
 
-โปรเจกต์มี 2 งานแยกกัน: **งาน A Regression** (ทำนายอัตราดอกเบี้ย) และ **งาน B Classification** (ทำนายการผิดนัดชำระ)
-ทุกงานแบ่งข้อมูลเป็น train / validation / test, เลือก threshold และ hyper-parameter จาก validation เท่านั้น (ไม่แตะ test), และวัดซ้ำหลายรอบเป็น mean ± SD
+## ผลลัพธ์หลัก
 
-## เปิดดูผลทีละโมเดล
-
-ทุกโมเดลมี notebook ของตัวเองใน `Notebooks/` (เปิดบน GitHub ได้เลย ผลรันและกราฟฝังอยู่ในไฟล์แล้ว)
-แต่ละ notebook มี 3 ช่องโค้ด: **1. Setup and data** (import + แบ่งข้อมูล) → **2. Model** (เทรนโมเดลที่เขียนเอง + ตัวเทียบจาก scikit-learn) → **3. Results** (ตัวชี้วัด, กราฟ, บันทึกโมเดล)
-
-| งาน A: Regression | งาน B: Classification |
-|---|---|
-| [00 Data analysis](Notebooks/Regression/00_Data_Analysis.ipynb) | [00 Data analysis](Notebooks/Classification/00_Data_Analysis.ipynb) |
-| [01 Simple Linear](Notebooks/Regression/01_Simple_Linear_Regression.ipynb) | [01 Logistic Regression](Notebooks/Classification/01_Logistic_Regression.ipynb) · [02 Decision Tree](Notebooks/Classification/02_Decision_Tree.ipynb) · [03 Random Forest](Notebooks/Classification/03_Random_Forest.ipynb) |
-| [02 Multiple Linear](Notebooks/Regression/02_Multiple_Linear_Regression.ipynb) | [04 Gradient Boosting](Notebooks/Classification/04_Gradient_Boosting.ipynb) · [05 XGBoost](Notebooks/Classification/05_XGBoost.ipynb) · [06 SVC linear](Notebooks/Classification/06_SVC_Linear.ipynb) · [07 SVC rbf](Notebooks/Classification/07_SVC_RBF.ipynb) |
-| [03 Polynomial](Notebooks/Regression/03_Polynomial_Regression.ipynb) | [08 k-NN](Notebooks/Classification/08_KNN.ipynb) · [09 Naive Bayes](Notebooks/Classification/09_Naive_Bayes.ipynb) · [10 Perceptron](Notebooks/Classification/10_Perceptron.ipynb) · [11 Single-Layer Perceptron](Notebooks/Classification/11_Single_Layer_Perceptron.ipynb) |
-| [04 Gradient Boosting (better model)](Notebooks/Regression/04_Gradient_Boosting_Regressor.ipynb) | [12 MLP](Notebooks/Classification/12_MLP.ipynb) · [13 EBM](Notebooks/Classification/13_EBM.ipynb) · [14 Stacking](Notebooks/Classification/14_Stacking.ipynb) · [15 Blend EBM + MLP (better model)](Notebooks/Classification/15_Blend_EBM_MLP.ipynb) |
-| [05 Model comparison](Notebooks/Regression/05_Model_Comparison.ipynb) | [16 PCA / LDA](Notebooks/Classification/16_PCA_LDA.ipynb) · [17 k-Means / Agglomerative](Notebooks/Classification/17_KMeans_Agglomerative.ipynb) · [18 Model comparison](Notebooks/Classification/18_Model_Comparison.ipynb) |
-
-กราฟของแต่ละโมเดลอยู่ที่ `Images/<งาน>/<ชื่อ notebook>/` · ตาราง CSV ที่ `Results/<งาน>/<ชื่อ notebook>/` · โมเดลที่เทรนแล้วที่ `TrainedModels/<งาน>/<ชื่อ notebook>.joblib`
-
----
-
-# งาน A: Regression (เป้าหมาย `int.rate`)
-
-**โมเดล:** Simple Linear (FICO), Multiple Linear, Polynomial (degree 2), **Gradient Boosting = better model** (โค้ดอยู่ใน `RegressionAlgorithms/`)
-
-### ผลลัพธ์ตามหัวข้อที่ครูกำหนด
-
-| โมเดล | Loss train (MSE) | Loss test (MSE) | RMSE | MAE | R² (test) | R² (5-fold CV) | R² (10 splits) |
-|---|---|---|---|---|---|---|---|
-| Baseline (เดาค่าเฉลี่ย) | 0.000728 | 0.000689 | 0.0263 | 0.0210 | -0.001 | - | -0.001 ± 0.001 |
-| Simple Linear | 0.000357 | 0.000333 | 0.0183 | 0.0139 | 0.515 | 0.511 ± 0.015 | 0.512 ± 0.019 |
-| Multiple Linear | 0.000240 | 0.000230 | 0.0152 | 0.0114 | 0.665 | 0.666 ± 0.018 | 0.671 ± 0.011 |
-| Polynomial | 0.000308 | 0.000281 | 0.0168 | 0.0127 | 0.591 | 0.577 ± 0.017 | 0.579 ± 0.022 |
-| **Gradient Boosting** | 0.000091 | 0.000165 | **0.0129** | **0.0090** | **0.760** | **0.770 ± 0.011** | **0.776 ± 0.009** |
-
-**สรุป:** Gradient Boosting ดีที่สุดทุกตัวชี้วัด และชนะ Multiple Linear ครบทั้ง 10 splits (+0.105 R²) เป็นผลที่แน่นอน ไม่ใช่ความบังเอิญ
-
-| หัวข้อ | ดูที่ |
-|---|---|
-| Loss / loss curve, actual vs predicted, residuals, เทียบ scikit-learn | notebook ของแต่ละโมเดล (`Images/Regression/0X_*/`) |
-| Performance curve, feature importance | [04 Gradient Boosting](Notebooks/Regression/04_Gradient_Boosting_Regressor.ipynb) |
-| R² benchmark, 5-fold CV, batch runs, กราฟรวม 4 โมเดล | [05 Model comparison](Notebooks/Regression/05_Model_Comparison.ipynb) (`Images/Regression/05_Model_Comparison/`) |
-
----
-
-# งาน B: Classification (เป้าหมาย `not.fully.paid`, ผิดนัด 16%)
-
-**โมเดล 15 ตัว:** Logistic Regression, Decision Tree, Random Forest, Gradient Boosting, XGBoost, SVC (linear), SVC (rbf), k-NN, Naive Bayes, Perceptron (averaged), Single-Layer Perceptron, MLP, EBM, Stacking (5 bases) และ **Blend EBM + MLP = better model** (โค้ดอยู่ใน `ClassificationAlgorithms/`)
-
-**Better model คืออะไร:** EBM (โมเดล additive ที่อธิบายเหตุผลรายคนได้) + MLP 5 ตัวที่ seed ต่างกัน (bagging ลดความผันผวน) ผสมที่น้ำหนัก **EBM 0.20 : MLP 0.80**
-
-- **เลือกน้ำหนักด้วย 3-fold CV บน train เท่านั้น** (ไม่ใช้ test) — จำเป็นเพราะการเลือกจาก validation split เดียวผันผวนมาก (split เดียวเลือก 0.7 ซึ่งเป็นปลายที่ CV ให้คะแนนต่ำสุด) ส่วน CV บน train เลือก 0.2 และวัดแบบ paired 4 splits แล้วชนะ MLP เดี่ยว 4/4 ครั้ง (+0.0012 ROC-AUC, +0.0053 PR-AUC)
-- ทดลองเพิ่มโมเดลอื่นเข้า blend แล้ว (Logistic Regression / SVC / Gradient Boosting / Single-Layer Perceptron → ROC ลดลง), เพิ่ม MLP bag เป็น 9 ตัว (ไม่ต่าง), เปลี่ยนเป็น MLP 128/256 หน่วย (แย่ลง) จึงคงรูปเดิม
-- ตัวชี้วัดที่ใช้ตัดสินคือ **ROC-AUC และ PR-AUC จาก validation/CV** ส่วนการตัดสินใจ flag ใช้ threshold จาก validation เช่นกัน
-
-### 1) ผลลัพธ์ตามหัวข้อที่ครูกำหนด (test set, threshold f1.5 เลือกจาก validation)
-
-| โมเดล | Log-loss | Accuracy | Precision | Sensitivity | Specificity | F1 | ROC-AUC | PR-AUC | ตรวจกี่ % | Enrichment | พลาด |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Blend EBM + MLP** | 0.458 | 0.379 | 0.194 | **0.915** | 0.278 | 0.319 | **0.7095** | **0.2973** | 75.3% | 1.22× | **26** |
-| MLP | 0.461 | 0.380 | 0.193 | 0.912 | 0.279 | 0.319 | 0.7089 | 0.2967 | 75.1% | 1.21× | 27 |
-| Logistic Regression | 0.459 | 0.448 | 0.206 | 0.862 | 0.370 | 0.332 | 0.7067 | 0.2966 | 66.7% | 1.29× | 42 |
-| EBM (additive) | 0.459 | 0.437 | 0.203 | 0.869 | 0.356 | 0.330 | 0.7053 | 0.2955 | 68.0% | 1.28× | 40 |
-| Single-Layer Perceptron | 0.460 | 0.440 | 0.204 | 0.866 | 0.359 | 0.330 | 0.7050 | 0.2970 | 67.6% | 1.28× | 41 |
-| Stacking (5 bases) | **0.408** | 0.453 | 0.207 | 0.862 | 0.376 | 0.334 | 0.7025 | 0.2944 | 66.2% | 1.30× | 42 |
-| SVC (linear) | 0.407 | 0.398 | 0.195 | 0.889 | 0.305 | 0.320 | 0.7006 | 0.2921 | 72.6% | 1.22× | 34 |
-| Gradient Boosting | 0.459 | 0.517 | **0.223** | 0.816 | **0.461** | **0.350** | 0.6928 | 0.2790 | 58.4% | **1.40×** | 56 |
-| Perceptron (averaged) | 0.463 | 0.454 | 0.208 | 0.862 | 0.377 | 0.335 | 0.6913 | 0.2931 | 66.1% | 1.30× | 42 |
-| Random Forest | 0.447 | 0.482 | 0.213 | 0.836 | 0.415 | 0.339 | 0.6884 | 0.2716 | 62.5% | 1.34× | 50 |
-| XGBoost | 0.456 | **0.545** | 0.222 | 0.744 | **0.507** | 0.342 | 0.6845 | 0.2784 | 53.3% | **1.40×** | 78 |
-| Naive Bayes | 0.657 | 0.466 | 0.207 | 0.833 | 0.396 | 0.332 | 0.6756 | 0.2629 | 64.0% | 1.30× | 51 |
-| SVC (rbf) | 0.419 | 0.396 | 0.191 | 0.862 | 0.307 | 0.312 | 0.6605 | 0.2624 | 72.0% | 1.20× | 42 |
-| k-NN | 0.429 | 0.488 | 0.205 | 0.767 | 0.435 | 0.323 | 0.6501 | 0.2591 | 59.7% | 1.28× | 71 |
-| Decision Tree | 0.520 | 0.300 | 0.174 | 0.908 | 0.184 | 0.292 | 0.6325 | 0.2314 | 83.0% | 1.09× | 28 |
-
-*ตรวจกี่ % = สัดส่วนใบสมัครที่ถูกสั่งให้คนไปตรวจ · Enrichment = คนที่ถูก flag มีโอกาสเบี้ยวกี่เท่าของคนสุ่ม (1.00× = flag ไม่ให้ข้อมูล) · พลาด = จำนวนคนเบี้ยวที่หลุด (จาก 305 คนใน test)*
-
-**Baseline "ทุกคนจ่ายคืน" ได้ Accuracy 0.841 แต่ Sensitivity 0 และ ROC-AUC 0.500** จึงดู Accuracy อย่างเดียวไม่ได้ (ในข้อมูล 16% positive การทายข้างมากให้ accuracy สูงโดยอัตโนมัติ)
-
-### 2) กฎ threshold — ทำไมใช้ f1.5 (ค่าเฉลี่ย 15 โมเดล, ทุกกฎเลือกจาก validation)
-
-| กฎ | จับเบี้ยวได้ | Precision | ตรวจกี่ % | Enrichment | พลาด |
-|---|---|---|---|---|---|
-| 0.5 (ค่ามาตรฐาน) | 13.6% | 0.311 | 6.7% | 1.96× | 263 |
-| f1 (สมดุล) | 66.4% | 0.249 | 43.7% | 1.56× | 103 |
-| **f1.5 (ใช้อยู่)** | **85.4%** | 0.203 | 67.4% | 1.27× | 45 |
-| f2 (จับให้มากสุด) | 90.8% | 0.190 | 76.4% | 1.19× | 28 |
-| Youden (sensitivity+specificity−1) | 76.0% | 0.228 | 53.8% | 1.43× | 73 |
-| precision ≥ 1.5× base | 55.8% | 0.267 | 33.4% | 1.67× | 135 |
-
-**บทเรียน:** กฎ f2 จับคนเบี้ยวได้มากสุด แต่แลกมาด้วยการสั่งตรวจ 76% ของผู้สมัครทั้งหมด ทำให้ enrichment เหลือ 1.19× (flag แทบไม่ให้ข้อมูล) จึงเลือก **f1.5** เป็นค่าตั้งต้น — เปลี่ยนกฎได้ที่ตัวแปรเดียว `FLAG_RULE` ใน `Common/evaluation_classification.py`
-
-### 3) คุณค่าจริงของการใช้โมเดล: จัดคิวตรวจ (recall@top-k ของ Blend)
-
-| ตรวจเฉพาะ x% แรก (เสี่ยงสุดก่อน) | ใบที่ต้องตรวจ | จับเบี้ยวได้ | Precision ในกลุ่มที่ตรวจ | ดีกว่าสุ่ม |
-|---|---|---|---|---|
-| 5% | 96 | 10.8% | **34.4%** | **2.16×** |
-| 10% | 192 | 21.6% | **34.4%** | **2.16×** |
-| 20% | 383 | 40.3% | 32.1% | 2.02× |
-| 30% | 575 | 54.1% | 28.7% | 1.80× |
-| 50% | 958 | 75.7% | 24.1% | 1.51× |
-| ใช้ threshold f1.5 | 1,443 | 91.5% | 19.3% | 1.21× |
-| ตรวจทุกคน (ไม่มีโมเดล) | 1,916 | 100% | 15.9% | 1.00× |
-
-**ข้อสรุปที่ซื่อสัตย์:** โมเดลนี้ใช้ **จัดลำดับคิวให้คนไปตรวจ** ได้ (ตรวจ 10% แรก เจอคนเบี้ยวจริง 34% = 2.16 เท่าของการสุ่ม) แต่ **ยังไม่ควรใช้ตัดสินอนุมัติ/ปฏิเสธอัตโนมัติ** เพราะแม้แต่คิว 5% แรกก็ยังเป็นคนเบี้ยวจริงแค่ 1 ใน 3 และเพดานของข้อมูลชุดนี้อยู่ที่ ROC ≈ 0.71 (โมเดล 15 ตัวต่างชนิดให้ผล 0.63–0.71 เกาะกลุ่มกัน = ข้อจำกัดอยู่ที่ข้อมูล ไม่ใช่ที่โมเดล)
-
-### 4) 5-fold cross-validation (stratified) และ Batch runs (10 random splits)
-
-| โมเดล | CV ROC-AUC (mean ± SD) | CV recall@f1.5 | Batch ROC-AUC | Batch PR-AUC | Batch recall@f1.5 |
-|---|---|---|---|---|---|
-| **Blend EBM + MLP** | **0.682 ± 0.019** | 0.751 | **0.677 ± 0.014** | 0.289 ± 0.014 | 0.773 ± 0.090 |
-| MLP | 0.682 ± 0.019 | 0.733 | 0.676 ± 0.015 | 0.287 ± 0.013 | 0.766 ± 0.106 |
-| EBM | 0.678 ± 0.017 | 0.743 | 0.674 ± 0.013 | 0.290 ± 0.013 | 0.798 ± 0.058 |
-| Single-Layer Perceptron | 0.677 ± 0.018 | 0.722 | 0.674 ± 0.013 | 0.289 ± 0.014 | 0.771 ± 0.085 |
-| Logistic Regression | 0.677 ± 0.017 | 0.743 | 0.674 ± 0.013 | 0.290 ± 0.013 | 0.782 ± 0.075 |
-| Stacking (5 bases) | 0.677 ± 0.019 | 0.729 | 0.673 ± 0.014 | 0.288 ± 0.010 | 0.792 ± 0.054 |
-| SVC (linear) | 0.675 ± 0.019 | 0.757 | 0.671 ± 0.012 | 0.288 ± 0.016 | 0.796 ± 0.058 |
-| XGBoost | 0.672 ± 0.018 | 0.754 | 0.669 ± 0.013 | 0.281 ± 0.012 | 0.803 ± 0.081 |
-| Random Forest | 0.672 ± 0.020 | 0.728 | 0.665 ± 0.013 | 0.273 ± 0.011 | 0.801 ± 0.079 |
-| Gradient Boosting | 0.669 ± 0.019 | 0.716 | 0.669 ± 0.012 | 0.282 ± 0.012 | 0.774 ± 0.083 |
-| Naive Bayes | 0.668 ± 0.019 | 0.723 | 0.663 ± 0.015 | 0.270 ± 0.017 | 0.773 ± 0.101 |
-| Perceptron (averaged) | 0.665 ± 0.011 | 0.725 | 0.664 ± 0.015 | 0.277 ± 0.018 | 0.817 ± 0.084 |
-| k-NN | 0.664 ± 0.023 | 0.778 | 0.659 ± 0.013 | 0.280 ± 0.012 | 0.743 ± 0.108 |
-| SVC (rbf) | 0.638 ± 0.020 | 0.711 | 0.633 ± 0.015 | 0.239 ± 0.015 | 0.759 ± 0.073 |
-| Decision Tree | 0.630 ± 0.020 | 0.791 | 0.622 ± 0.017 | 0.230 ± 0.014 | 0.895 ± 0.088 |
-
-**สรุป:** Blend เป็นอันดับ 1 ทั้ง CV, batch และ test — แต่ช่องว่างกับ MLP เพียง 0.001 (SD ระหว่าง split ±0.014) จึงพูดได้ว่า 5 ตัวท็อป **เสมอกันทางสถิติ** จุดต่างของ Blend คือเสถียรกว่า และได้ EBM ติดมาช่วยอธิบายเหตุผลรายคน
-
-### 5) โมเดลเหมาะกับงานแบบไหน
-
-| กลุ่ม | โมเดล | เหมาะกับ |
+| งาน | โมเดลที่ดีที่สุด | คะแนน (ชุดทดสอบ) |
 |---|---|---|
-| เชิงเส้น | Logistic Regression, Single-Layer Perceptron | ข้อมูลที่สัมพันธ์เกือบเป็นเส้นตรง, ต้องอธิบายได้ (การเงิน/การแพทย์), ข้อมูลน้อย-กลาง |
-| | Perceptron (averaged) | ข้อมูลแยกเชิงเส้นได้, เรียนแบบ online/streaming |
-| | SVC (linear) | มิติสูง ตัวอย่างน้อย-กลาง, ต้องการขอบเขตชัดเจน (log-loss ดีสุดในงานนี้ 0.407) |
-| ต้นไม้ | Decision Tree | ต้องได้กฎ if-else ให้คนตรวจสอบ, เร็วสุด (0.2 วิ) แต่ ROC อ่อนสุด |
-| | Random Forest | ตารางผสมตัวเลข/หมวดหมู่, ทน noise, จูนน้อย (มี OOB ตรวจตัวเอง) |
-| | Gradient Boosting / XGBoost | ตารางคุณภาพสูงสุด/งานแข่งขัน, ฟีเจอร์ต่างชนิด, interaction ซับซ้อน (ในงานนี้ flag น้อยสุด = ตรวจน้อยแต่สบายใจกว่า) |
-| ระยะทาง/สถิติ | k-NN | มิติต่ำ ตัวอย่างน้อย (ในงานนี้ 27 ฟีเจอร์ทำให้อ่อนสุด — curse of dimensionality) |
-| | Naive Bayes | ข้อความ/ฟีเจอร์นับ/หมวดหมู่, ข้อมูลน้อยมาก, เร็วสุด (แต่ความน่าจะเป็นสุดขั้ว — log-loss แย่สุด) |
-| โครงข่าย/ทบซ้อน | MLP | ข้อมูลกลาง-ใหญ่, ความสัมพันธ์ไม่เป็นเส้นตรง/interaction, ฟีเจอร์ต่อเนื่อง |
-| | EBM (GAM) | งานที่ต้องอธิบายผลได้ทุกฟีเจอร์แต่ยังไม่ต้องเป็นเส้นตรง (เครดิต/ประกัน/สุขภาพ) |
-| | Stacking | มีโมเดลฐานหลายตัวที่ "ต่างกันจริง" และมีข้อมูลมากพอ (ในงานนี้ช้าสุด 26 วิ และไม่ได้ดีกว่าเดี่ยว) |
-| | **Blend EBM + MLP** | งานที่ต้องการทั้งคะแนนนำและคำอธิบาย — EBM อธิบายรายคน + MLP ให้คะแนน |
-| ลดมิติ (ไม่มี/threshold) | PCA / KernelPCA | ลดมิติก่อนใช้ k-NN/SVC, ทำ visualization, กำจัดฟีเจอร์ซ้ำ (`Dimensionreduction.py`) |
-| | LDA | ลดมิติเมื่อมี label (ต้องการทิศที่แยกคลาส) — ในงานนี้แกนเดียวพอสำหรับ SVC |
-| | Feature selection | คัดฟีเจอร์จาก importance (ในงานนี้ 27 → 21 ตัว, เลือกจาก validation ROC-AUC) |
-| ไม่มี label | k-Means / Agglomerative | แบ่งกลุ่มลูกค้า/segment, profiling (`KMeanandAgglomerative.py`) — ในงานนี้ k=6 silhouette 0.153, ARI กับคนเบี้ยวจริงแค่ 0.023 (โครงสร้างเรขาคณิตไม่ตรงกับความเสี่ยง จึงใช้เพื่อแบ่งกลุ่มเท่านั้น ไม่ใช่ทำนาย) |
+| A Regression | Gradient Boosting Regressor | R² = 0.760 |
+| B Classification | Blend EBM + MLP | ROC-AUC = 0.7095 |
 
-| หัวข้อ | ดูที่ |
-|---|---|
-| Loss curve, performance curve, confusion matrix, ROC/PR curve, feature importance, เทียบ scikit-learn **รายโมเดล** | notebook ของแต่ละโมเดล 01-15 (`Images/Classification/<ชื่อ notebook>/`) |
-| EBM shape functions, Naive Bayes densities, perceptron variants, SVC weights, permutation importance | ใน notebook ของโมเดลนั้น (13, 09, 10, 06, 05) |
-| กราฟรวม 15 โมเดล: loss, accuracy, precision/recall/F1, ROC-AUC, confusion matrices, กฎ threshold, recall@top-k, CV, batch runs, feature importance agreement | [18 Model comparison](Notebooks/Classification/18_Model_Comparison.ipynb) (`Images/Classification/18_Model_Comparison/`) |
+## โฟลเดอร์
 
----
-
-## โครงสร้างโฟลเดอร์
-
-| ชื่อ | คืออะไร |
-|---|---|
-| `Notebooks/Regression/`, `Notebooks/Classification/` | notebook ละ 1 โมเดล + data analysis + model comparison |
-| `RegressionAlgorithms/`, `ClassificationAlgorithms/` | โค้ดโมเดลที่เขียนเองด้วย NumPy (คำอธิบายกลไกอยู่ที่หัวไฟล์) |
-| `Common/` | โค้ดที่ทุก notebook ใช้ร่วมกัน: `project.py` (path + แบ่งข้อมูล), `data*.py` (ฟีเจอร์), `metrics*.py` (ตัวชี้วัด), `evaluation_classification.py` (กฎ threshold), `model_zoo.py` (ค่า hyper-parameter ที่ใช้ซ้ำใน CV/batch runs), `report_*.py` + `plots.py` (กราฟ) |
-| `Images/` | กราฟ PNG แยกโฟลเดอร์ตาม notebook |
-| `Results/` | ตาราง CSV แยกโฟลเดอร์ตาม notebook |
-| `TrainedModels/` | โมเดลที่เทรนแล้ว (`.joblib`) แยกตามงาน |
-| `run_all_notebooks.py` | รันทุก notebook ตามลำดับแล้วบันทึกผลลงไฟล์ |
-
-## วิธีรัน
-
-```bash
-pip install -r requirements.txt
-python run_all_notebooks.py                 # ทั้งหมด (~1.5 ชม. ส่วนใหญ่คือ CV + batch runs ใน Model comparison)
-python run_all_notebooks.py Regression      # เฉพาะงาน A
-python run_all_notebooks.py 05_XGBoost      # notebook เดียว
+```
+DataSet/      ข้อมูล loan_data.csv
+Notebooks/    โค้ดที่รันได้ + ผลลัพธ์ (1 notebook ต่อ 1 โมเดล)
+  Regression/       00 วิเคราะห์ข้อมูล, 01-04 โมเดล, 05 เปรียบเทียบ
+  Classification/   00 วิเคราะห์ข้อมูล, 01-15 โมเดล, 16 PCA/LDA, 17 Clustering, 18 เปรียบเทียบ
+  src/              โค้ดโมเดลที่เขียนเอง (notebook import จากที่นี่)
+Results/      กราฟ (.png) และตาราง (.csv) ของแต่ละโมเดล แยกตาม notebook
 ```
 
-หรือเปิด notebook ใน Jupyter / VS Code แล้วกด Run All (ให้รัน notebook ของโมเดลก่อน Model comparison เพราะ comparison อ่านผลของโมเดลแต่ละตัว)
+## เปิดดูผล
+
+เปิดไฟล์ `.ipynb` ใน `Notebooks/` บน GitHub ได้เลย ผลรันและกราฟอยู่ในไฟล์แล้ว
+กราฟและตารางของแต่ละโมเดลอยู่ที่ `Results/<งาน>/<ชื่อ notebook>/`
+
+## รันเอง
+
+```
+pip install -r requirements.txt
+python Notebooks/run_all_notebooks.py Regression       # งาน A (~15 นาที)
+python Notebooks/run_all_notebooks.py Classification   # งาน B (~1.5 ชั่วโมง)
+python Notebooks/run_all_notebooks.py 15_Blend         # notebook เดียว
+```
+
+แต่ละ notebook มี 3 ช่อง: **1. Setup** (โหลดและแบ่งข้อมูล) → **2. Model** (เทรนโมเดลที่เขียนเอง + scikit-learn) → **3. Results** (ตัวชี้วัด, กราฟ, บันทึกผล)

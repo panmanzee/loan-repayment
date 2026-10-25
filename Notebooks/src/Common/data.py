@@ -8,7 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 
-DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "DataSet", "loan_data.csv")
+DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "DataSet", "loan_data.csv")
 
 
 def load_dataset(path=DATA_PATH):

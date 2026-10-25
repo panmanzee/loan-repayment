@@ -1,6 +1,6 @@
 """
 The standard RESULTS section of every classification notebook: one call prints the metrics,
-draws the charts (shown in the notebook and saved to Images/Classification/<notebook>/) and
+draws the charts (shown in the notebook and saved to Results/Classification/<notebook>/) and
 saves what the comparison notebook needs (predictions, metrics, scratch-vs-sklearn check, model).
 """
 
@@ -154,7 +154,7 @@ def plot_importance(name, imp, path, top=10):
 
 
 def save_model(out, name, model, row, feature_cols):
-    """joblib file in TrainedModels/Classification/, reloaded once to prove it gives identical predictions."""
+    """joblib file in Results/Classification/<notebook>/model.joblib, reloaded once to prove it gives identical predictions."""
     model.best_threshold_ = row["chosen_threshold"]  # so .predict() after a reload uses the same threshold
     meta = {
         "name": name,
@@ -227,5 +227,5 @@ def report_classifier(out, name, model, d, check=None):
     back = save_model(out, name, model, row, d.feature_cols)
     same = bool(np.allclose(back.predict_proba(d.X_te)[:, 1], p["p_te"]))
     assert same, "the reloaded model gives different predictions!"
-    print(f"\nsaved + reloaded TrainedModels/Classification/{out.name}.joblib (identical predictions: {same})")
+    print(f"\nsaved + reloaded Results/Classification/{out.name}/model.joblib (identical predictions: {same})")
     return row

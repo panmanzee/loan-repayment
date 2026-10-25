@@ -1,6 +1,6 @@
 """
 The standard RESULTS section of every regression notebook: metrics, charts (shown in the notebook
-and saved to Images/Regression/<notebook>/), and the files the comparison notebook reads.
+and saved to Results/Regression/<notebook>/), and the files the comparison notebook reads.
 """
 
 import joblib
@@ -90,5 +90,5 @@ def report_regressor(out, name, model, d, history, check):
     back = joblib.load(out.model())["model"]
     same = bool(np.allclose(back.predict(d.X_test), p_test))
     assert same, "the reloaded model gives different predictions!"
-    print(f"saved + reloaded TrainedModels/Regression/{out.name}.joblib (identical predictions: {same})")
+    print(f"saved + reloaded Results/Regression/{out.name}/model.joblib (identical predictions: {same})")
     return row
