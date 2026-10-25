@@ -2,8 +2,7 @@ numpy
 pandas
 matplotlib
 scikit-learn
-joblib
-jupyter
-nbconvert
 xgboost
 interpret
+joblib
+jupyter
